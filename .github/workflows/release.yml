@@ -1,0 +1,81 @@
+name: MATLAB Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      incoming_ref:
+        description: 'Ref in Cantera/cantera to package; leave blank for latest release'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+
+      - name: Resolve Cantera ref
+        id: resolve-ref
+        run: |
+            if [ -n "${{ inputs.incoming_ref }}" ]; then
+            echo "ref=${{ inputs.incoming_ref }}" >> "$GITHUB_OUTPUT"
+            else
+            latest_tag=$(gh api repos/Cantera/cantera/releases/latest --jq .tag_name)
+            echo "Latest Cantera release tag: $latest_tag"
+            echo "ref=$latest_tag" >> "$GITHUB_OUTPUT"
+            fi
+        env:
+            GH_TOKEN: ${{ github.token }}
+
+      - name: Checkout Cantera source
+        uses: actions/checkout@v4
+        with:
+          repository: Cantera/cantera
+          ref: ${{ steps.resolve-ref.outputs.ref }}
+          submodules: recursive
+          persist-credentials: false
+          path: cantera-src
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2024b
+
+      - name: Show workflow context
+        run: |
+            echo "github.ref       = ${{ github.ref }}"
+            echo "github.ref_name  = ${{ github.ref_name }}"
+            echo "github.sha       = ${{ github.sha }}"
+            echo "incoming_ref     = ${{ inputs.incoming_ref }}"
+            echo "workspace        = $GITHUB_WORKSPACE"
+
+      - name: Build MATLAB toolbox
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd, 'buildUtilities'));
+            buildToolbox( ...
+                version='${{ steps.resolve-ref.outputs.ref }}', ...
+                ctRoot=fullfile(pwd, 'cantera-src'));
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cantera-mltbx
+          path: release/*.mltbx
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.mltbx
+          generate_release_notes: true

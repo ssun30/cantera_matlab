@@ -1,0 +1,240 @@
+name: Build MATLAB Toolbox
+
+on:
+  # pull_request:
+  #   paths:
+  #     - ".github/workflows/matlab_toolbox.yml"
+  # workflow_dispatch:
+  #   inputs:
+  #     incoming_ref:
+  #       description: >
+  #         The ref from Cantera/cantera to be built.
+  #         Can be a tag, commit hash, or branch name.
+  #       required: true
+  #       default: "main"
+  #     publish:
+  #       description: >
+  #         Whether to publish the built .mltbx to the test branch
+  #         of the cantera_matlab repository.
+  #       required: true
+  #       default: "false"
+  workflow_dispatch_disabled:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.event.inputs.incoming_ref || 'main' }}
+  cancel-in-progress: true
+
+env:
+  ACTION_URL: "https://github.com/myusername/cantera_matlab/actions/runs/${{ github.run_id }}"
+
+jobs:
+  post-pending-status:
+    name: Post a pending workflow status to Cantera/cantera
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.CANTERA_REPO_STATUS }}
+    outputs:
+      incoming-ref: ${{ steps.munge-incoming-ref.outputs.incoming-ref }}
+      incoming-sha: ${{ steps.munge-incoming-ref.outputs.incoming-sha }}
+      tag-ref: ${{ steps.munge-incoming-ref.outputs.tag-ref }}
+    steps:
+      - name: Normalize the incoming ref
+        id: munge-incoming-ref
+        run: |
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          incoming_ref = os.environ["INCOMING_REF"]
+          incoming_sha = ""
+
+          if incoming_ref.startswith("refs/"):
+              incoming_ref = incoming_ref.replace("refs/", "")
+          elif re.match(r"^v\d+\.\d+\.\d+.*$", incoming_ref):
+              incoming_ref = f"tags/{incoming_ref}"
+          elif re.match(r"^[a-f0-9]{6,40}$", incoming_ref):
+              incoming_sha = incoming_ref
+          else:
+              incoming_ref = f"heads/{incoming_ref}"
+
+          tag_ref = "true" if incoming_ref.startswith("tags/") else "false"
+
+          if not incoming_sha:
+              result = subprocess.run(
+                  [
+                      "gh", "api",
+                      f"repos/Cantera/cantera/git/ref/{incoming_ref}",
+                      "-H", "Accept: application/vnd.github.v3+json",
+                      "--jq", ".object.sha"
+                  ],
+                  capture_output=True,
+                  text=True,
+                  check=False
+              )
+              if result.returncode == 0:
+                  incoming_sha = result.stdout.strip()
+              else:
+                  raise RuntimeError(result.stderr)
+
+          Path(os.environ["GITHUB_OUTPUT"]).write_text(
+              f"incoming-ref={incoming_ref}\n"
+              f"incoming-sha={incoming_sha}\n"
+              f"tag-ref={tag_ref}\n"
+          )
+        shell: python
+        env:
+          INCOMING_REF: "${{ inputs.incoming_ref || 'main' }}"
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Post pending status to upstream commit
+        if: steps.munge-incoming-ref.outputs.tag-ref == 'false' && github.event_name != 'pull_request'
+        run: |
+          gh api repos/Cantera/cantera/statuses/${INCOMING_SHA} \
+            -H "Accept: application/vnd.github.v3+json" \
+            --field state='pending' \
+            --field target_url=$ACTION_URL \
+            --field context='MATLAB Toolbox Build' \
+            --field description='Pending toolbox build' \
+            --silent
+        env:
+          INCOMING_SHA: "${{ steps.munge-incoming-ref.outputs.incoming-sha }}"
+
+  build-mltbx:
+    name: Build .mltbx
+    runs-on: ubuntu-latest
+    needs: ["post-pending-status"]
+    outputs:
+      job-status: ${{ job.status }}
+    steps:
+      - name: Checkout Cantera source repository
+        uses: actions/checkout@v4
+        with:
+          repository: Cantera/cantera
+          ref: ${{ inputs.incoming_ref || 'main' }}
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+
+      - name: Build MATLAB toolbox
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd, 'interfaces', 'matlab', 'packaging'));
+            buildToolbox(version="0.0.0", ctRoot=pwd);
+
+      - name: Archive built .mltbx
+        uses: actions/upload-artifact@v4
+        with:
+          name: cantera-mltbx
+          path: interfaces/matlab/*.mltbx
+          if-no-files-found: error
+
+  publish-to-test-branch:
+    name: Publish .mltbx to cantera_matlab test branch
+    runs-on: ubuntu-latest
+    needs: ["build-mltbx", "post-pending-status"]
+    if: inputs.publish == 'true'
+    outputs:
+      job-status: ${{ job.status }}
+    steps:
+      - name: Download built .mltbx
+        uses: actions/download-artifact@v4
+        with:
+          name: cantera-mltbx
+          path: dist
+
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ssun30/cantera_matlab
+          ref: test
+          token: ${{ secrets.CANTERA_MATLAB_PUSH_TOKEN }}
+          path: target-repo
+
+      - name: Copy artifact into target repo
+        run: |
+          mkdir -p target-repo/dist
+          cp dist/*.mltbx target-repo/dist/Cantera_MATLAB_Toolbox_latest.mltbx
+
+      - name: Commit and push artifact
+        run: |
+          cd target-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/Cantera_MATLAB_Toolbox_latest.mltbx
+          git commit -m "Update MATLAB toolbox artifact" || echo "No changes to commit"
+          git push origin test
+
+  send-status-to-cantera:
+    name: Send job status to Cantera/cantera
+    runs-on: ubuntu-latest
+    needs:
+      - post-pending-status
+      - build-mltbx
+      - publish-to-test-branch
+    if: always() && github.event_name != 'pull_request'
+    steps:
+      - name: Collect statuses
+        run: |
+          import os
+          from collections import Counter
+
+          statuses = {
+              "build": "${{ needs.build-mltbx.outputs.job-status }}",
+              "publish": "${{ needs.publish-to-test-branch.outputs.job-status }}",
+          }
+
+          if statuses["publish"] == "" and os.environ["PUBLISH"] == "false":
+              publish = statuses.pop("publish")
+          else:
+              publish = ""
+
+          if all(v == "success" for v in statuses.values()):
+              overall_status = "success"
+          elif any(v in ("cancelled", "") for v in statuses.values()):
+              overall_status = "error"
+          elif any(v == "failure" for v in statuses.values()):
+              overall_status = "failure"
+
+          status_counts = Counter(statuses.values())
+          status_counts.update([publish])
+
+          if overall_status in ("error", "failure"):
+              description = []
+              if "success" in status_counts:
+                  description.append(f"{status_counts['success']} succeeded")
+              if "cancelled" in status_counts:
+                  description.append(f"{status_counts['cancelled']} cancelled")
+              if "failure" in status_counts:
+                  description.append(f"{status_counts['failure']} failed")
+              if "" in status_counts:
+                  description.append(f"{status_counts['']} skipped")
+              description = ", ".join(description)
+          else:
+              description = "Successfully built MATLAB toolbox!"
+
+          with open(os.environ["GITHUB_ENV"], "a") as fh:
+              fh.write(f"OVERALL_STATUS={overall_status}\n")
+              fh.write(f"DESCRIPTION={description}\n")
+        shell: python
+        env:
+          PUBLISH: "${{ inputs.publish }}"
+
+      - name: Post final status to upstream commit
+        if: needs.post-pending-status.outputs.tag-ref == 'false'
+        run: |
+          gh api repos/Cantera/cantera/statuses/${INCOMING_SHA} \
+            -H "Accept: application/vnd.github.v3+json" \
+            --field state="${OVERALL_STATUS}" \
+            --field target_url=$ACTION_URL \
+            --field context='MATLAB Toolbox Build' \
+            --field description="${DESCRIPTION}" \
+            --silent
+        env:
+          GITHUB_TOKEN: ${{ secrets.CANTERA_REPO_STATUS }}
+          INCOMING_SHA: "${{ needs.post-pending-status.outputs.incoming-sha }}"
