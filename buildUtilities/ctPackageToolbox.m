@@ -117,7 +117,6 @@ function validateStageRoot(stageRoot)
     requiredDirs = [
         fullfile(stageRoot, "toolbox")
         fullfile(stageRoot, "samples")
-        fullfile(stageRoot, "data")
         fullfile(stageRoot, "toolbox", "+ct")
     ];
 

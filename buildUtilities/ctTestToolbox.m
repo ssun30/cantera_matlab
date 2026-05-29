@@ -20,21 +20,17 @@ function results = ctTestToolbox(options)
     end
 
     toolboxRoot = fullfile(options.StageRoot, "toolbox");
-    dataRoot = fullfile(options.StageRoot, "data");
 
-    validateTestInputs(options.RepoRoot, toolboxRoot, dataRoot);
+    validateTestInputs(options.RepoRoot, toolboxRoot);
 
     testFile = fullfile(options.RepoRoot, "tests", "smokeTest.m");
     toolboxRoot = fullfile(options.StageRoot, "toolbox");
-    dataRoot = fullfile(options.StageRoot, "data");
 
     setenv("CANTERA_MATLAB_TOOLBOX_ROOT", toolboxRoot);
-    setenv("CANTERA_DATA", dataRoot);
 
     if options.Verbose
         fprintf("Running Cantera MATLAB toolbox smoke tests...\n");
         fprintf("Toolbox root: %s\n", toolboxRoot);
-        fprintf("Data root:    %s\n", dataRoot);
         fprintf("Test file:    %s\n", testFile);
     end
 
@@ -65,12 +61,11 @@ function stageRoot = inferStageRoot(repoRoot)
     stageRoot = fullfile(repoRoot, "TMP");
 end
 
-function validateTestInputs(repoRoot, toolboxRoot, dataRoot)
+function validateTestInputs(repoRoot, toolboxRoot)
     requiredDirs = [
         toolboxRoot
         fullfile(toolboxRoot, "+ct")
         fullfile(toolboxRoot, "+ct", "+impl", "ctMatlab")
-        dataRoot
     ];
 
     for i = 1:numel(requiredDirs)

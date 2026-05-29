@@ -44,7 +44,6 @@ function stage = ctStageToolbox(options)
     mapping = {
         fullfile("interfaces", "matlab"), "toolbox";
         fullfile("samples", "matlab"),    "samples";
-        "data",                           "data"
     };
 
     for i = 1:size(mapping, 1)
@@ -67,7 +66,6 @@ function stage = ctStageToolbox(options)
     stage.Root = string(stageRoot);
     stage.Toolbox = string(fullfile(stageRoot, "toolbox"));
     stage.Samples = string(fullfile(stageRoot, "samples"));
-    stage.Data = string(fullfile(stageRoot, "data"));
     stage.CtRoot = string(ctRoot);
     stage.RepoRoot = string(repoRoot);
 
@@ -77,7 +75,6 @@ function stage = ctStageToolbox(options)
         fprintf("Staging complete.\n");
         fprintf("Staged toolbox: %s\n", stage.Toolbox);
         fprintf("Staged samples: %s\n", stage.Samples);
-        fprintf("Staged data:    %s\n", stage.Data);
     end
 end
 
@@ -118,7 +115,6 @@ function validateStage(stage)
     mustBeExistingFolder(stage.Root, "Stage root");
     mustBeExistingFolder(stage.Toolbox, "Staged toolbox");
     mustBeExistingFolder(stage.Samples, "Staged samples");
-    mustBeExistingFolder(stage.Data, "Staged data");
 
     if ~isfolder(fullfile(stage.Toolbox, "+ct"))
         error("ctStageToolbox:MissingPackageNamespace", ...

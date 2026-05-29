@@ -3,14 +3,12 @@ classdef smokeTest < matlab.unittest.TestCase
 
     properties
         ToolboxRoot string
-        DataPath string
         ExpectedVersion string
     end
 
     methods (TestClassSetup)
         function resolvePaths(testCase)
             testCase.ToolboxRoot = string(getenv("CANTERA_MATLAB_TOOLBOX_ROOT"));
-            testCase.DataPath = string(getenv("CANTERA_DATA"));
             testCase.ExpectedVersion = inferExpectedVersion();
 
             testCase.assertNotEmpty(testCase.ToolboxRoot, ...
@@ -24,13 +22,6 @@ classdef smokeTest < matlab.unittest.TestCase
 
             testCase.assertTrue(isfolder(fullfile(testCase.ToolboxRoot, "+ct", "+impl", "ctMatlab")), ...
                 "Built interface folder +ct/ctMatlab does not exist. Run ctBuildInterface first.");
-
-            if testCase.DataPath == ""
-                testCase.DataPath = fullfile(testCase.ToolboxRoot, "..", "data");
-            end
-
-            testCase.assertTrue(isfolder(testCase.DataPath), ...
-                "Cantera data path does not exist: " + testCase.DataPath);
 
             oldPath = path;
             testCase.addTeardown(@() path(oldPath));
