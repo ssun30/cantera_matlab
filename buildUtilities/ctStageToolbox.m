@@ -62,6 +62,8 @@ function stage = ctStageToolbox(options)
     removeExcludedDirectories(stageRoot, options.Verbose);
     removeExcludedFiles(stageRoot, options.Verbose);
 
+    copyLicense(repoRoot, stageRoot, options.Verbose);
+
     stage = struct;
     stage.Root = string(stageRoot);
     stage.Toolbox = string(fullfile(stageRoot, "toolbox"));
@@ -91,6 +93,25 @@ function removeExcludedDirectories(stageRoot, verbose)
             rmdir(excludeDirs(i), "s");
         end
     end
+end
+
+function copyLicense(repoRoot, stageRoot, verbose)
+    licenseFile = fullfile(repoRoot, "LICENSE");
+
+    if ~isfile(licenseFile)
+        warning("ctStageToolbox:MissingLicense", ...
+            "LICENSE not found at %s; the packaged toolbox will not include a license.", ...
+            licenseFile);
+        return
+    end
+
+    dest = fullfile(stageRoot, "LICENSE");
+
+    if verbose
+        fprintf("Copying %s\n    -> %s\n", licenseFile, dest);
+    end
+
+    copyfile(licenseFile, dest);
 end
 
 function removeExcludedFiles(stageRoot, verbose)
