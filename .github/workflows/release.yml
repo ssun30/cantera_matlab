@@ -11,71 +11,189 @@ on:
         required: false
         default: ''
 
-permissions:
-  contents: write
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+# TEMP (pre-alpha): package the in-development MATLAB interface from the fork
+# feature branch. After merging into Cantera/cantera, set CANTERA_REPO back to
+# "Cantera/cantera" and restore release-tag / latest-release ref resolution and
+# libcantera-devel version pinning in the "resolve" job below.
+env:
+  CANTERA_REPO: ssun30/cantera
+  CANTERA_DEFAULT_REF: matlab_autoConfigure
 
 jobs:
-  release:
+  resolve:
+    name: Resolve Cantera ref and version
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      version: ${{ steps.resolve.outputs.version }}
+      lib_spec: ${{ steps.resolve.outputs.lib_spec }}
     steps:
-      - name: Checkout packaging repo
+      - name: Resolve ref, version, and conda spec
+        id: resolve
+        env:
+          INCOMING_REF: ${{ inputs.incoming_ref }}
+        run: |
+          # --- Cantera source ref ---
+          # TEMP (pre-alpha): build against CANTERA_DEFAULT_REF on the fork.
+          # After merge, restore: tag push -> github.ref_name, otherwise the
+          # latest Cantera release (gh api repos/Cantera/cantera/releases/latest).
+          if [ -n "$INCOMING_REF" ]; then
+            REF="$INCOMING_REF"
+          else
+            REF="$CANTERA_DEFAULT_REF"
+          fi
+
+          # --- Toolbox version for the .mltbx ---
+          # Use the pushed tag's X.Y.Z if present, otherwise a placeholder.
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            VERSION="$(printf '%s' "${{ github.ref_name }}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+          fi
+          VERSION="${VERSION:-0.0.0}"
+
+          # --- conda library spec ---
+          # TEMP (pre-alpha): track latest libcantera-devel for the dev branch.
+          # After merge, restore pinning for releases: libcantera-devel=$VERSION.
+          LIB_SPEC="libcantera-devel"
+
+          echo "Cantera source:    $CANTERA_REPO@$REF"
+          echo "Toolbox version:   $VERSION"
+          echo "conda library:     $LIB_SPEC"
+
+          {
+            echo "ref=$REF"
+            echo "version=$VERSION"
+            echo "lib_spec=$LIB_SPEC"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build & test on ${{ matrix.label }}
+    needs: resolve
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux
+          - os: windows-latest
+            label: windows
+          - os: macos-latest
+            label: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CANTERA_ROOT: ${{ github.workspace }}/cantera-src
+      TOOLBOX_VERSION: ${{ needs.resolve.outputs.version }}
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - name: Check out packaging repo
         uses: actions/checkout@v4
 
-      - name: Resolve Cantera ref
-        id: resolve-ref
-        run: |
-            if [ -n "${{ inputs.incoming_ref }}" ]; then
-            echo "ref=${{ inputs.incoming_ref }}" >> "$GITHUB_OUTPUT"
-            else
-            latest_tag=$(gh api repos/Cantera/cantera/releases/latest --jq .tag_name)
-            echo "Latest Cantera release tag: $latest_tag"
-            echo "ref=$latest_tag" >> "$GITHUB_OUTPUT"
-            fi
-        env:
-            GH_TOKEN: ${{ github.token }}
-
-      - name: Checkout Cantera source
+      - name: Check out Cantera source
         uses: actions/checkout@v4
         with:
-          repository: Cantera/cantera
-          ref: ${{ steps.resolve-ref.outputs.ref }}
-          submodules: recursive
+          # TEMP (pre-alpha): fork source; see CANTERA_REPO env at top of file.
+          repository: ${{ env.CANTERA_REPO }}
+          ref: ${{ needs.resolve.outputs.ref }}
           persist-credentials: false
           path: cantera-src
 
-      - name: Set up MATLAB
-        uses: matlab-actions/setup-matlab@v2
+      - name: Set up conda
+        uses: conda-incubator/setup-miniconda@v3
         with:
-          release: R2024b
+          miniforge-version: latest
+          activate-environment: ct-dev
+          channels: conda-forge
 
-      - name: Show workflow context
+      - name: Install Cantera development dependency
         run: |
-            echo "github.ref       = ${{ github.ref }}"
-            echo "github.ref_name  = ${{ github.ref_name }}"
-            echo "github.sha       = ${{ github.sha }}"
-            echo "incoming_ref     = ${{ inputs.incoming_ref }}"
-            echo "workspace        = $GITHUB_WORKSPACE"
+          conda install -y "${{ needs.resolve.outputs.lib_spec }}"
 
-      - name: Build MATLAB toolbox
-        uses: matlab-actions/run-command@v2
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PREFIX="$(cygpath -w "$CONDA_PREFIX")"
+            echo "CANTERA_INCLUDE_PATH=${PREFIX}\\Library\\include" >> "$GITHUB_ENV"
+            echo "CANTERA_LIB_PATH=${PREFIX}\\Library\\bin" >> "$GITHUB_ENV"
+          else
+            echo "CANTERA_INCLUDE_PATH=$CONDA_PREFIX/include" >> "$GITHUB_ENV"
+            echo "CANTERA_LIB_PATH=$CONDA_PREFIX/lib" >> "$GITHUB_ENV"
+            echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set LD_PRELOAD for MATLAB (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          LIB_STDCXX=$(ldconfig -p | grep libstdc++.so.6 | awk '{print $4}' | head -n 1)
+          LIB_OPENBLAS=$(ldconfig -p | grep libopenblas.so.0 | awk '{print $4}' | head -n 1)
+          LIB_LAPACK=$(ldconfig -p | grep liblapack.so.3 | awk '{print $4}' | head -n 1)
+          echo "LD_PRELOAD=$LIB_STDCXX:$LIB_OPENBLAS:$LIB_LAPACK" >> "$GITHUB_ENV"
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v3
         with:
-          command: |
-            addpath(fullfile(pwd, 'buildUtilities'));
-            buildToolbox( ...
-                version='${{ steps.resolve-ref.outputs.ref }}', ...
-                ctRoot=fullfile(pwd, 'cantera-src'));
+          release: latest
 
-      - name: Upload workflow artifact
+      - name: Build, package, and test the toolbox
+        uses: matlab-actions/run-build@v3
+        with:
+          tasks: test
+
+      - name: Archive interface library (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cd TMP/toolbox/+ct/+impl
+          zip -r "$GITHUB_WORKSPACE/cantera-matlab-interface-${{ matrix.label }}.zip" ctMatlab
+
+      - name: Archive interface library (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >
+          Compress-Archive
+          -Path "TMP/toolbox/+ct/+impl/ctMatlab"
+          -DestinationPath "cantera-matlab-interface-${{ matrix.label }}.zip"
+
+      - name: Upload interface library artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cantera-mltbx
+          name: interface-${{ matrix.label }}
+          path: cantera-matlab-interface-${{ matrix.label }}.zip
+          if-no-files-found: error
+
+      - name: Upload toolbox (.mltbx) artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolbox-mltbx
           path: release/*.mltbx
           if-no-files-found: error
 
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*.mltbx
+          files: |
+            dist/**/*.mltbx
+            dist/**/*.zip
           generate_release_notes: true

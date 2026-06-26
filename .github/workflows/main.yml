@@ -28,13 +28,14 @@ jobs:
     steps:
       - name: Check out cantera_matlab
         uses: actions/checkout@v4
-        with:
-          path: cantera_matlab
 
       - name: Check out Cantera
         uses: actions/checkout@v4
         with:
-          repository: Cantera/cantera
+          # TEMP (pre-alpha): build against the fork feature branch.
+          # Revert to "Cantera/cantera" (default branch) after merge.
+          repository: ssun30/cantera
+          ref: matlab_autoConfigure
           path: cantera
           submodules: recursive
 
@@ -74,4 +75,3 @@ jobs:
         uses: matlab-actions/run-build@v3
         with:
           tasks: test
-          working-directory: cantera_matlab
