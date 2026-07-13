@@ -4,6 +4,7 @@ function ctPackageToolbox(options)
         options.StageRoot (1,1) string = ""
         options.Version (1,1) string = string(getenv("TOOLBOX_VERSION"))
         options.RepoSlug (1,1) string = ""
+        options.ReleaseTag (1,1) string = ""
         options.Clean (1,1) logical = true
         options.Verbose (1,1) logical = true
     end
@@ -98,8 +99,19 @@ function ctPackageToolbox(options)
         repoSlug = "ssun30/cantera_matlab";
     end
 
-    relBase = "https://github.com/" + repoSlug + "/releases/download/v" + ver;
-    licenseURL = "https://raw.githubusercontent.com/" + repoSlug + "/v" + ver + "/LICENSE";
+    % The release tag is used to construct the download URLs for the platform-specific compiled interface. It is inferred from the GITHUB_REF_NAME environment variable (set automatically in CI).
+    releaseTag = options.ReleaseTag;
+    if releaseTag == "" && string(getenv("GITHUB_REF_TYPE")) == "tag"
+        releaseTag = strip(string(getenv("GITHUB_REF_NAME")));
+    end
+
+    % Local release tag override for testing.
+    if releaseTag == ""
+        releaseTag = "v" + ver;
+    end
+
+    relBase = "https://github.com/" + repoSlug + "/releases/download/" + releaseTag;
+    licenseURL = "https://raw.githubusercontent.com/" + repoSlug + "/" + releaseTag + "/LICENSE";
 
     % Map release asset labels (linux/windows/macos) to MATLAB platform keys.
     opts.RequiredAdditionalSoftware = [
