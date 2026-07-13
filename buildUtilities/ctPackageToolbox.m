@@ -3,6 +3,7 @@ function ctPackageToolbox(options)
         options.RepoRoot (1,1) string = ""
         options.StageRoot (1,1) string = ""
         options.Version (1,1) string = string(getenv("TOOLBOX_VERSION"))
+        options.RepoSlug (1,1) string = ""
         options.Clean (1,1) logical = true
         options.Verbose (1,1) logical = true
     end
@@ -79,6 +80,39 @@ function ctPackageToolbox(options)
     opts.SupportedPlatforms.Glnxa64      = true;
     opts.SupportedPlatforms.Maci64       = true;
     opts.SupportedPlatforms.MatlabOnline = false;
+
+    % Download the platform-specific compiled interface on install.
+    % The clib interface (plus the bundled cantera_shared runtime) is too
+    % platform-specific to embed in a single cross-platform .mltbx, so it is
+    % published as per-OS release assets and fetched by MATLAB at install time
+    % based on the user's platform. Resolve the publishing repo from
+    % GITHUB_REPOSITORY (set automatically in CI) with a fallback for local
+    % packaging.
+    % TEMP (pre-alpha): fallback slug points at the fork; drop it once the
+    % toolbox repo is finalized (see CANTERA_REPO note in release.yml).
+    repoSlug = options.RepoSlug;
+    if repoSlug == ""
+        repoSlug = strip(string(getenv("GITHUB_REPOSITORY")));
+    end
+    if repoSlug == ""
+        repoSlug = "ssun30/cantera_matlab";
+    end
+
+    relBase = "https://github.com/" + repoSlug + "/releases/download/v" + ver;
+    licenseURL = "https://raw.githubusercontent.com/" + repoSlug + "/v" + ver + "/LICENSE";
+
+    % Map release asset labels (linux/windows/macos) to MATLAB platform keys.
+    opts.RequiredAdditionalSoftware = [
+        struct("Name", "ctMatlabInterface", "Platform", "win64", ...
+               "DownloadURL", relBase + "/cantera-matlab-interface-windows.zip", ...
+               "LicenseURL", licenseURL)
+        struct("Name", "ctMatlabInterface", "Platform", "glnxa64", ...
+               "DownloadURL", relBase + "/cantera-matlab-interface-linux.zip", ...
+               "LicenseURL", licenseURL)
+        struct("Name", "ctMatlabInterface", "Platform", "mac", ...
+               "DownloadURL", relBase + "/cantera-matlab-interface-macos.zip", ...
+               "LicenseURL", licenseURL)
+    ];
 
     % Package the toolbox
     try
