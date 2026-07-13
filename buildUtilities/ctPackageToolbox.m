@@ -46,6 +46,11 @@ function ctPackageToolbox(options)
 
     outputFile = fullfile(outputDir, 'Cantera_MATLAB_Toolbox_' + ver + '.mltbx');
 
+    % Convert the Getting Started live script (kept as .m for version control)
+    % into a .mlx inside the staged toolbox. Do this before collecting files so
+    % the generated .mlx is included in the package.
+    guidePath = stageGettingStartedGuide(options.RepoRoot, options.StageRoot);
+
     % Collect packaged files
     files = dir(fullfile(options.StageRoot, '**', '*'));
     files = files(~[files.isdir]);
@@ -73,7 +78,9 @@ function ctPackageToolbox(options)
     opts.AuthorEmail                     = 'developers@cantera.org'; % placeholder
     opts.ToolboxFiles                    = allFiles;
     opts.ToolboxMatlabPath               = matlabPaths;
-    % opts.ToolboxGettingStartedGuide      = guidePath;
+    if guidePath ~= ""
+        opts.ToolboxGettingStartedGuide  = guidePath;
+    end
     opts.ToolboxImageFile                = iconFile;
     opts.MinimumMatlabRelease            = 'R2022b';
     opts.OutputFile                      = outputFile;
@@ -175,30 +182,35 @@ function validateStageRoot(stageRoot)
     end
 end
 
-% function guidePath = stageTutorialsAsLiveScripts(srcTutorialDir, destTutorialDir)
-%     % Convert all .m tutorials into .mlx files. Returns the staged path to
-%     % GettingStartedGuide.mlx.
+function guidePath = stageGettingStartedGuide(repoRoot, stageRoot)
+%STAGEGETTINGSTARTEDGUIDE Convert doc/GettingStarted.m to .mlx in the stage.
+%
+% The Getting Started guide is authored as a live-script .m (for version
+% control) and converted to .mlx at package time so it can be registered as the
+% toolbox Getting Started guide. Returns the staged .mlx path, or "" if the
+% source is missing or conversion is unavailable (packaging then proceeds
+% without a guide rather than failing).
 
-%     if ~isfolder(destTutorialDir)
-%         mkdir(destTutorialDir);
-%     end
+    guidePath = "";
 
-%     tutorialFiles = dir(fullfile(srcTutorialDir, '*.m'));
-%     guidePath = '';
+    guideSrc = fullfile(repoRoot, "doc", "GettingStarted.m");
+    if ~isfile(guideSrc)
+        warning("ctPackageToolbox:NoGettingStartedGuide", ...
+                "Getting Started source not found at %s; packaging without a guide.", ...
+                guideSrc);
+        return
+    end
 
-%     for k = 1:numel(tutorialFiles)
-%         srcFile = fullfile(tutorialFiles(k).folder, tutorialFiles(k).name);
-%         [~, baseName] = fileparts(tutorialFiles(k).name);
-%         destFile = fullfile(destTutorialDir, [baseName, '.mlx']);
+    guideDest = fullfile(stageRoot, "toolbox", "GettingStarted.mlx");
+    try
+        matlab.internal.liveeditor.openAndSave(char(guideSrc), char(guideDest));
+    catch ME
+        warning("ctPackageToolbox:GuideConversionFailed", ...
+                ("Could not convert %s to .mlx (%s); packaging without a " + ...
+                 "Getting Started guide."), guideSrc, ME.message);
+        return
+    end
 
-%         try
-%             matlab.internal.liveeditor.openAndSave(srcFile, destFile);
-%         catch ME
-%             error('Failed to convert "%s" to live script: %s', srcFile, ME.message);
-%         end
-
-%         if strcmp(baseName, 'GettingStartedGuide')
-%             guidePath = destFile;
-%         end
-%     end
-% end
+    guidePath = guideDest;
+    fprintf("Staged Getting Started guide: %s\n", guideDest);
+end
