@@ -4,7 +4,9 @@ function plan = buildfile()
     plan.DefaultTasks = "test";
 
     plan("package").Dependencies = "stage";
-    plan("buildInterface").Dependencies = "package";
+    % buildCanteraLibrary builds from CANTERA_ROOT rather than the staged tree,
+    % so it is a second root task; buildInterface is where the two meet.
+    plan("buildInterface").Dependencies = ["package", "buildCanteraLibrary"];
     plan("test").Dependencies = "buildInterface";
 end
 
@@ -18,6 +20,12 @@ function packageTask(context)
     root = string(context.Plan.RootFolder);
 
     withBuildUtilities(root, @() ctPackageToolbox());
+end
+
+function buildCanteraLibraryTask(context)
+    root = string(context.Plan.RootFolder);
+
+    withBuildUtilities(root, @() ctBuildCanteraLibrary());
 end
 
 function buildInterfaceTask(context)
