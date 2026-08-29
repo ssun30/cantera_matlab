@@ -110,17 +110,18 @@ def check_prerequisites(boost_inc_dir: str | None = None) -> list[str]:
                 f"    It must contain boost/, not be boost/ itself."
             )
 
+    # packaging is imported by SConstruct itself; the other two by sourcegen.
     missing = []
-    for module, package in (("jinja2", "jinja2"), ("ruamel.yaml", "ruamel.yaml")):
+    for module in ("packaging", "jinja2", "ruamel.yaml"):
         try:
             __import__(module)
         except ImportError:
-            missing.append(package)
+            missing.append(module)
 
     if missing:
         problems.append(
-            f"sourcegen requires {', '.join(missing)}, not importable from "
-            f"{sys.executable}.\n"
+            f"The Cantera build requires {', '.join(missing)}, not importable "
+            f"from {sys.executable}.\n"
             f"    python -m pip install {' '.join(missing)}"
         )
 

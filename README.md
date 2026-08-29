@@ -103,8 +103,8 @@ automatically. See the interface usage guide for details
 * **MATLAB** (R2024a or later) with a MATLAB-compatible C++ compiler.
 * A checkout of the **main Cantera repository**, cloned with submodules
   (`git clone --recurse-submodules`).
-* **Python 3.9+** with `scons`, `jinja2`, and `ruamel.yaml`
-  (`pip install scons jinja2 ruamel.yaml`).
+* **Python 3.9+** with `scons`, `packaging`, `jinja2`, and `ruamel.yaml`
+  (`pip install scons packaging jinja2 ruamel.yaml`).
 * **Boost headers, 1.83 or newer** — the only Cantera dependency not vendored
   under `ext/`. Set `BOOST_INC_DIR` if not on the default include path.
 * **doxygen**, with **perl** on its PATH. Required to build, not only to build

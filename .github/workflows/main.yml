@@ -19,7 +19,9 @@ jobs:
   test:
     name: Test Cantera MATLAB toolbox
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Generous: a from-source Cantera build on a 4-core runner is far slower
+    # than the conda install it replaced. The cache makes repeat runs quick.
+    timeout-minutes: 120
 
     env:
       CANTERA_ROOT: ${{ github.workspace }}/cantera
@@ -49,11 +51,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      # jinja2 and ruamel.yaml are needed by sourcegen, which generates the
-      # cantera_clib headers and sources at build time -- they are not checked
-      # into the Cantera repo.
-      - name: Install SCons and sourcegen dependencies
-        run: python -m pip install --upgrade 'scons>=4.0' jinja2 ruamel.yaml
+      # packaging is imported directly by Cantera's SConstruct; jinja2 and
+      # ruamel.yaml are needed by sourcegen, which generates the cantera_clib
+      # headers and sources at build time.
+      - name: Install SCons and Cantera build dependencies
+        run: |
+          python -m pip install --upgrade \
+            'scons>=4.0' packaging jinja2 ruamel.yaml
+
+      # setup-python points LD_LIBRARY_PATH at its own lib directory, which is
+      # then inherited by MATLAB. MATLAB resolves its bundled libraries through
+      # that path and crashes in hard-to-diagnose ways when a foreign directory
+      # precedes them. Nothing here needs it: ctBuildCanteraLibrary already
+      # clears it for the SCons subprocess it launches.
+      - name: Keep LD_LIBRARY_PATH out of MATLAB's environment
+        run: echo "LD_LIBRARY_PATH=" >> "$GITHUB_ENV"
 
       # Boost is the one Cantera dependency not vendored under ext/. SConstruct
       # requires >= 1.83; ubuntu-latest packages 1.83. It is header-only for
@@ -87,7 +99,58 @@ jobs:
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v3
         with:
-          release: latest
+          release: R2025b
+
+      # Split from "test" so a library-build failure is attributable on its
+      # own, and so the built library can be inspected before the interface
+      # build consumes it. The stamp file makes the later run a no-op.
+      - name: Build the Cantera library
+        uses: matlab-actions/run-build@v3
+        with:
+          tasks: buildCanteraLibrary
+
+      - name: Inspect the built library
+        run: |
+          ls -l build/canteraLib/lib
+          echo "--- soname and dependencies ---"
+          readelf -d build/canteraLib/lib/libcantera_shared.so.* | head -20
+          echo "--- a few exported symbols ---"
+          nm -D --defined-only build/canteraLib/lib/libcantera_shared.so.* \
+            | grep -c ' T ' || true
+
+      # TEMP (diagnostic): clibgen kills the MATLAB process with an uncaught
+      # std::exception, so try/catch cannot see it. Probe clibgen with a
+      # trivial header first: if that also dies, clibgen is broken in this
+      # environment regardless of Cantera's headers. Remove once green.
+      - name: Probe clibgen with a trivial header
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: |
+            header = fullfile(tempdir, "ctprobe.h");
+            fid = fopen(header, "w");
+            fprintf(fid, "int ctprobe_add(int a, int b);\n");
+            fclose(fid);
+            lib = fullfile(pwd, "build", "canteraLib", "lib", ...
+                           "libcantera_shared.so.4");
+            disp("probing clibgen with " + header);
+            clibgen.generateLibraryDefinition(header, ...
+                IncludePath = tempdir, ...
+                Libraries = lib, ...
+                OutputFolder = tempdir, ...
+                InterfaceName = "ctprobe", ...
+                OverwriteExistingDefinitionFiles = true, ...
+                CLinkage = true, ...
+                Verbose = true);
+            disp("PROBE OK: clibgen works in this environment");
+
+      - name: Collect MATLAB crash dumps
+        if: always()
+        run: |
+          echo "--- crash dumps ---"
+          find "$HOME" /tmp "$GITHUB_WORKSPACE" -maxdepth 3 \
+            -name 'matlab_crash_dump*' -print -exec head -60 {} \; 2>/dev/null \
+            || echo "none found"
 
       - name: Run buildtool tests
         uses: matlab-actions/run-build@v3
