@@ -1,0 +1,18 @@
+# Staging area produced by ctStageToolbox. Generated; safe to delete.
+TMP/
+
+# Self-contained Cantera library built by ctBuildCanteraLibrary. Kept out of
+# TMP because ctStageToolbox deletes that directory wholesale.
+build/
+
+# Packaged .mltbx output.
+release/
+
+# MATLAB
+*.asv
+*.autosave
+slprj/
+
+# Python (build_cantera_library.py / audit_library.py)
+__pycache__/
+*.pyc

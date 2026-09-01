@@ -82,7 +82,10 @@ function ctPackageToolbox(options)
         opts.ToolboxGettingStartedGuide  = guidePath;
     end
     opts.ToolboxImageFile                = iconFile;
-    opts.MinimumMatlabRelease            = 'R2022b';
+    % Minimum supported release, verified by CI. Raising this is a breaking
+    % change for users on older MATLAB: the Add-On Manager refuses to install
+    % the .mltbx below it.
+    opts.MinimumMatlabRelease            = 'R2024b';
     opts.OutputFile                      = outputFile;
     opts.SupportedPlatforms.Win64        = true;
     opts.SupportedPlatforms.Glnxa64      = true;

@@ -1,4 +1,11 @@
 name: MATLAB Release
+# This workflow produces and publishes the release artifacts:
+#   Cantera_MATLAB_Toolbox_<version>.mltbx
+#   cantera-matlab-interface-<os>.zip        (compiled interface + library, os-specific)
+# The interface cannot live inside the .mltbx (File Exchange policy), so the
+# package declares these zips as RequiredAdditionalSoftware and MATLAB fetches
+# the right one at install time. Their URLs are built from this tag, so the
+# asset names here and in ctPackageToolbox.m must agree.
 
 on:
   push:
@@ -7,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       incoming_ref:
-        description: 'Ref in Cantera/cantera to package; leave blank for latest release'
+        description: 'Ref in Cantera/cantera to package; leave blank for the default'
         required: false
         default: ''
 
@@ -17,155 +24,196 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
 
-# TEMP (pre-alpha): package the in-development MATLAB interface from the fork
-# feature branch. After merging into Cantera/cantera, set CANTERA_REPO back to
-# "Cantera/cantera" and restore release-tag / latest-release ref resolution and
-# libcantera-devel version pinning in the "resolve" job below.
 env:
+  # TEMP (pre-alpha): package the in-development interface from the fork.
+  # After merging into Cantera/cantera, set CANTERA_REPO back and restore
+  # release-tag / latest-release ref resolution in the "resolve" job.
   CANTERA_REPO: ssun30/cantera
   CANTERA_DEFAULT_REF: matlab_autoConfigure
+  # Build artifacts with the minimum supported release so the generated
+  # interface loads on that release and later.
+  MATLAB_RELEASE: R2024b
+  BOOST_ROOT: ${{ github.workspace }}/3rdparty/boost
+  BOOST_URL: https://github.com/boostorg/boost/releases/download/boost-1.87.0/boost-1.87.0-b2-nodocs.7z
 
 jobs:
   resolve:
     name: Resolve Cantera ref and version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
       version: ${{ steps.resolve.outputs.version }}
-      lib_spec: ${{ steps.resolve.outputs.lib_spec }}
     steps:
-      - name: Resolve ref, version, and conda spec
+      - name: Resolve ref and version
         id: resolve
         env:
           INCOMING_REF: ${{ inputs.incoming_ref }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          # --- Cantera source ref ---
           # TEMP (pre-alpha): build against CANTERA_DEFAULT_REF on the fork.
-          # After merge, restore: tag push -> github.ref_name, otherwise the
-          # latest Cantera release (gh api repos/Cantera/cantera/releases/latest).
-          if [ -n "$INCOMING_REF" ]; then
-            REF="$INCOMING_REF"
-          else
-            REF="$CANTERA_DEFAULT_REF"
-          fi
+          # After merge, restore: tag push -> the matching Cantera release.
+          REF="${INCOMING_REF:-$CANTERA_DEFAULT_REF}"
 
-          # --- Toolbox version for the .mltbx ---
-          # Use the pushed tag's X.Y.Z if present, otherwise a placeholder.
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            VERSION="$(printf '%s' "${{ github.ref_name }}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+          # X.Y.Z from the pushed tag; a placeholder for manual dispatch.
+          if [ "$REF_TYPE" = "tag" ]; then
+            VERSION="$(printf '%s' "$REF_NAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
           fi
           VERSION="${VERSION:-0.0.0}"
 
-          # --- conda library spec ---
-          # TEMP (pre-alpha): track latest libcantera-devel for the dev branch.
-          # After merge, restore pinning for releases: libcantera-devel=$VERSION.
-          LIB_SPEC="libcantera-devel"
-
-          echo "Cantera source:    $CANTERA_REPO@$REF"
-          echo "Toolbox version:   $VERSION"
-          echo "conda library:     $LIB_SPEC"
+          echo "Cantera source:  $CANTERA_REPO@$REF"
+          echo "Toolbox version: $VERSION"
 
           {
             echo "ref=$REF"
             echo "version=$VERSION"
-            echo "lib_spec=$LIB_SPEC"
           } >> "$GITHUB_OUTPUT"
 
-  build:
-    name: Build & test on ${{ matrix.label }}
+  package:
+    name: Package on ${{ matrix.label }}
     needs: resolve
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     permissions:
       contents: read
+
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             label: linux
-          - os: windows-latest
-            label: windows
-          - os: macos-latest
+          - os: macos-14
             label: macos
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+          - os: windows-2025
+            label: windows
+
     env:
-      CANTERA_ROOT: ${{ github.workspace }}/cantera-src
+      CANTERA_ROOT: ${{ github.workspace }}/cantera
       TOOLBOX_VERSION: ${{ needs.resolve.outputs.version }}
+
     defaults:
       run:
-        shell: bash -el {0}
+        shell: bash
+
     steps:
-      - name: Check out packaging repo
+      - name: Check out cantera_matlab
         uses: actions/checkout@v4
 
-      - name: Check out Cantera source
+      - name: Check out Cantera
         uses: actions/checkout@v4
         with:
-          # TEMP (pre-alpha): fork source; see CANTERA_REPO env at top of file.
           repository: ${{ env.CANTERA_REPO }}
           ref: ${{ needs.resolve.outputs.ref }}
+          path: cantera
           persist-credentials: false
-          path: cantera-src
+          submodules: recursive
 
-      - name: Set up conda
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          miniforge-version: latest
-          activate-environment: ct-dev
-          channels: conda-forge
+          python-version: '3.12'
 
-      - name: Install Cantera development dependency
+      - name: Install SCons and Cantera build dependencies
         run: |
-          conda install -y "${{ needs.resolve.outputs.lib_spec }}"
+          python -m pip install --upgrade \
+            'scons>=4.0' packaging jinja2 ruamel.yaml
 
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            PREFIX="$(cygpath -w "$CONDA_PREFIX")"
-            echo "CANTERA_INCLUDE_PATH=${PREFIX}\\Library\\include" >> "$GITHUB_ENV"
-            echo "CANTERA_LIB_PATH=${PREFIX}\\Library\\bin" >> "$GITHUB_ENV"
-          else
-            echo "CANTERA_INCLUDE_PATH=$CONDA_PREFIX/include" >> "$GITHUB_ENV"
-            echo "CANTERA_LIB_PATH=$CONDA_PREFIX/lib" >> "$GITHUB_ENV"
-            echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+      - name: Install Boost and doxygen (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libboost-dev doxygen
+
+      - name: Install Boost and doxygen (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install --display-times boost doxygen
+          echo "BOOST_INC_DIR=$(brew --prefix)/include" >> "$GITHUB_ENV"
+
+      - name: Cache Boost headers (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BOOST_ROOT }}
+          key: boost-1.87.0-${{ runner.os }}
+
+      - name: Install Boost headers (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          BOOST_ROOT=$(echo "$BOOST_ROOT" | sed 's/\\/\//g')
+          if [ ! -d "$BOOST_ROOT/boost" ]; then
+            mkdir -p "$BOOST_ROOT"
+            curl --progress-bar --location --output "$BOOST_ROOT/download.7z" -L "$BOOST_URL"
+            7z -o"$BOOST_ROOT" x "$BOOST_ROOT/download.7z" -y -bd boost-1.87.0/boost
+            mv "$BOOST_ROOT/boost-1.87.0/boost" "$BOOST_ROOT/boost"
+            rm "$BOOST_ROOT/download.7z"
           fi
+          echo "BOOST_INC_DIR=$BOOST_ROOT" >> "$GITHUB_ENV"
 
+      - name: Install doxygen (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install doxygen.install -y --no-progress
+          echo "C:/Program Files/doxygen/bin" >> "$GITHUB_PATH"
+
+      # MATLAB_RELEASE (R2024b) supports Visual C++ 2022 at newest, but
+      # windows-2025 ships a newer Visual Studio, so mex finds no compiler it
+      # recognises. Install the 2022 build tools alongside it.
+      - name: Install Visual C++ 2022 build tools (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install visualstudio2022buildtools -y --no-progress
+          choco install visualstudio2022-workload-vctools -y --no-progress
+          "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
+            -products '*' -format value -property displayName || true
+
+      # setup-python points it at its own lib directory, which MATLAB then
+      # inherits and crashes on. Nothing here needs it.
+      - name: Keep LD_LIBRARY_PATH out of MATLAB's environment
+        if: runner.os != 'Windows'
+        run: echo "LD_LIBRARY_PATH=" >> "$GITHUB_ENV"
+
+      # MATLAB bundles an older libstdc++ than the toolchain clibgen
+      # compiles the interface with, and dies without
+      # the system one preloaded. cantera_shared links it statically
+      # and needs nothing. Do not remove with the conda dependencies.
       - name: Set LD_PRELOAD for MATLAB (Linux)
         if: runner.os == 'Linux'
         run: |
-          preload=""
-          for name in libstdc++.so.6 libopenblas.so.0 liblapack.so.3; do
-            # Prefer the conda-provided library that cantera_shared links against;
-            # fall back to the system linker cache.
-            lib=$(ls "$CANTERA_LIB_PATH/$name"* 2>/dev/null | head -n 1 || true)
-            if [ -z "$lib" ]; then
-              lib=$(ldconfig -p | awk -v n="$name" '$1 ~ n {print $NF; exit}' || true)
-            fi
-            if [ -n "$lib" ]; then
-              preload="${preload:+$preload:}$lib"
-            else
-              echo "Warning: $name not found in \$CANTERA_LIB_PATH or ldconfig cache" >&2
-            fi
-          done
-          echo "LD_PRELOAD=$preload" >> "$GITHUB_ENV"
+          LIB_STDCXX=$(ldconfig -p | grep libstdc++.so.6 | awk '{print $4}' | head -n 1)
+          echo "LD_PRELOAD=$LIB_STDCXX" >> "$GITHUB_ENV"
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v3
         with:
-          release: latest
+          release: ${{ env.MATLAB_RELEASE }}
 
-      - name: Build, package, and test the toolbox
+      - name: Build the toolbox and interface
         uses: matlab-actions/run-build@v3
         with:
-          tasks: test
+          tasks: buildInterface
 
-      - name: Archive interface library (Linux/macOS)
+      # Gate on self-containment before anything is published: this is the
+      # exact file users receive, and a missed dependency here is a broken
+      # install for everyone on this platform.
+      - name: Audit the shipped library
+        run: |
+          lib=$(find "TMP/toolbox/+ct/+impl/ctMatlab" \
+                -name '*cantera_shared*' ! -type l | head -1)
+          echo "shipped library: $lib"
+          test -n "$lib" || { echo "no library beside the interface"; exit 1; }
+          python buildUtilities/audit_library.py --library "$lib"
+
+      - name: Archive the interface (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
           cd TMP/toolbox/+ct/+impl
           zip -r "$GITHUB_WORKSPACE/cantera-matlab-interface-${{ matrix.label }}.zip" ctMatlab
 
-      - name: Archive interface library (Windows)
+      - name: Archive the interface (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: >
@@ -173,14 +221,14 @@ jobs:
           -Path "TMP/toolbox/+ct/+impl/ctMatlab"
           -DestinationPath "cantera-matlab-interface-${{ matrix.label }}.zip"
 
-      - name: Upload interface library artifact
+      - name: Upload the interface artifact
         uses: actions/upload-artifact@v4
         with:
           name: interface-${{ matrix.label }}
           path: cantera-matlab-interface-${{ matrix.label }}.zip
           if-no-files-found: error
 
-      - name: Upload toolbox (.mltbx) artifact
+      - name: Upload the toolbox (.mltbx)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
@@ -190,9 +238,9 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: package
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
