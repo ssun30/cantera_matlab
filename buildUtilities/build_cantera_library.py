@@ -231,7 +231,13 @@ def platform_flags() -> list[str]:
         # cantera_shared to the static CRT and give it a private heap.
         msvc_defaults = ("/MD /nologo /D_SCL_SECURE_NO_WARNINGS "
                          "/D_CRT_SECURE_NO_WARNINGS")
-        return [f"cc_flags={msvc_defaults} /DSUNDIALS_DEPRECATED="]
+        return [
+            # SConstruct guesses mingw whenever g++ is on PATH and cl.exe is
+            # not -- true on GitHub's Windows images -- and the MSVC flags
+            # below would then go to g++.
+            "toolchain=msvc",
+            f"cc_flags={msvc_defaults} /DSUNDIALS_DEPRECATED=",
+        ]
 
     raise RuntimeError(f"Unsupported platform: {system}")
 

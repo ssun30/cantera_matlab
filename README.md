@@ -4,7 +4,7 @@
 [![View on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://www.mathworks.com/matlabcentral/fileexchange/183781-cantera_matlab)
 [![Latest release](https://img.shields.io/github/v/release/ssun30/cantera_matlab?include_prereleases)](https://github.com/ssun30/cantera_matlab/releases)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![MATLAB](https://img.shields.io/badge/MATLAB-R2022b%2B-orange)
+![MATLAB](https://img.shields.io/badge/MATLAB-R2024b%2B-orange)
 
 This repository independently hosts the tooling needed to **build, test, and
 release** the Cantera MATLAB Toolbox as a `.mltbx` package for easy
@@ -16,9 +16,12 @@ The pipeline:
 
 1. **Stage** the Cantera MATLAB interface (and samples) from a checkout of the
    main Cantera repo.
-2. **Build** a C++ interface library against a Cantera installation.
-3. **Test** that the staged, built toolbox loads and works.
-4. **Package** everything into a `.mltbx` file for distribution.
+2. **Package** the pure-MATLAB tree into a `.mltbx` for distribution.
+3. **Build** a self-contained Cantera library from source, with every
+   third-party dependency vendored and statically linked, so users need no
+   Cantera installation of their own.
+4. **Build** the C++ interface against that library, and **test** that the
+   staged toolbox loads and works.
 
 ---
 
@@ -88,11 +91,16 @@ savepath
 
 ### 3. Load Cantera
 
-Run `ct.load` for the first time. You will be prompted to locate your Cantera
-library directory (e.g. a conda environment's library folder); the choice is
-remembered for future sessions, and the data directory is registered
-automatically. See the interface usage guide for details
-(`ct.configureCanteraDirectories`, execution modes, etc.).
+**You do not need to install Cantera separately.** The download in step 1
+includes a self-contained Cantera library — every third-party dependency is
+vendored and statically linked, so it depends on nothing beyond the operating
+system. No conda environment, no `LD_LIBRARY_PATH`, no compiler.
+
+Run `ct.load` for the first time. If you are prompted for the Cantera library
+directory, point it at the same `ctMatlab` folder you moved in step 2 — the
+library ships alongside the interface. The choice is remembered for future
+sessions, and the data directory is registered automatically. See the interface
+usage guide for details (`ct.configureCanteraDirectories`, execution modes).
 
 ---
 
@@ -100,7 +108,7 @@ automatically. See the interface usage guide for details
 
 ### Prerequisites
 
-* **MATLAB** (R2024a or later) with a MATLAB-compatible C++ compiler.
+* **MATLAB** R2024b or later, with a MATLAB-compatible C++ compiler.
 * A checkout of the **main Cantera repository**, cloned with submodules
   (`git clone --recurse-submodules`).
 * **Python 3.9+** with `scons`, `packaging`, `jinja2`, and `ruamel.yaml`
