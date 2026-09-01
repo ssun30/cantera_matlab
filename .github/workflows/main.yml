@@ -25,8 +25,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14, windows-2025]
-        release: [R2024b, latest]
+        # Each OS is covered on the minimum supported MATLAB and on the
+        # newest image with the newest MATLAB. Windows has no R2024b row:
+        # that release supports Visual C++ 2022 at newest, and windows-2025
+        # ships a newer Visual Studio, so MATLAB finds no usable compiler.
+        include:
+          - os: ubuntu-24.04
+            release: R2024b
+          - os: ubuntu-latest
+            release: latest
+          - os: macos-14
+            release: R2024b
+          - os: macos-latest
+            release: latest
+          - os: windows-2025
+            release: R2024b
+          - os: windows-latest
+            release: latest
 
     env:
       CANTERA_ROOT: ${{ github.workspace }}/cantera
@@ -99,6 +114,17 @@ jobs:
         run: |
           choco install doxygen.install -y --no-progress
           echo "C:/Program Files/doxygen/bin" >> "$GITHUB_PATH"
+
+      # R2024b supports Visual C++ 2022 at newest, but windows-2025 ships a
+      # newer Visual Studio, so mex finds no compiler it recognises. Install
+      # the 2022 build tools alongside it. Not needed for MATLAB "latest".
+      - name: Install Visual C++ 2022 build tools (Windows, R2024b)
+        if: runner.os == 'Windows' && matrix.release == 'R2024b'
+        run: |
+          choco install visualstudio2022buildtools -y --no-progress
+          choco install visualstudio2022-workload-vctools -y --no-progress
+          "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
+            -products '*' -format value -property displayName || true
 
       # setup-python points it at its own lib directory, which MATLAB then
       # inherits and crashes on. Nothing here needs it.

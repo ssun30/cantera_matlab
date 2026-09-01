@@ -159,6 +159,17 @@ jobs:
           choco install doxygen.install -y --no-progress
           echo "C:/Program Files/doxygen/bin" >> "$GITHUB_PATH"
 
+      # MATLAB_RELEASE (R2024b) supports Visual C++ 2022 at newest, but
+      # windows-2025 ships a newer Visual Studio, so mex finds no compiler it
+      # recognises. Install the 2022 build tools alongside it.
+      - name: Install Visual C++ 2022 build tools (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install visualstudio2022buildtools -y --no-progress
+          choco install visualstudio2022-workload-vctools -y --no-progress
+          "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
+            -products '*' -format value -property displayName || true
+
       # setup-python points it at its own lib directory, which MATLAB then
       # inherits and crashes on. Nothing here needs it.
       - name: Keep LD_LIBRARY_PATH out of MATLAB's environment
