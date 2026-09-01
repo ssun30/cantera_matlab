@@ -3,6 +3,7 @@ name: Cantera MATLAB CI
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
     paths-ignore:
       - "README.md"
       - "README.MD"
