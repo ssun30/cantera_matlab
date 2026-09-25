@@ -5,6 +5,7 @@ function ctPackageToolbox(options)
         options.Version (1,1) string = string(getenv("TOOLBOX_VERSION"))
         options.RepoSlug (1,1) string = ""
         options.ReleaseTag (1,1) string = ""
+        options.DownloadBaseURL (1,1) string = string(getenv("CT_DOWNLOAD_BASE_URL"))
         options.Clean (1,1) logical = true
         options.Verbose (1,1) logical = true
     end
@@ -56,9 +57,20 @@ function ctPackageToolbox(options)
     files = files(~[files.isdir]);
     allFiles = fullfile({files.folder}, {files.name})';
 
-    % Get relative MATLAB paths from actual packaged file locations
+    % The compiled interface must never ship inside the .mltbx (File Exchange
+    % policy). Staging removes it, but a build run before packaging recreates
+    % it in the stage, so exclude it here regardless of task order.
+    interfaceDir = fullfile(options.StageRoot, 'toolbox', '+ct', '+impl', 'ctMatlab');
+    allFiles = allFiles(~startsWith(allFiles, interfaceDir + filesep));
+
+    % Get relative MATLAB paths from actual packaged file locations. The data
+    % directory is packaged but deliberately kept off the MATLAB path: Cantera
+    % resolves data files through its own search path (ct.addDataDirectories),
+    % not MATLAB's, so adding it would only clutter the user's path.
     matlabPaths = strsplit(genpath(options.StageRoot), pathsep);
     matlabPaths = matlabPaths(~cellfun(@isempty, matlabPaths));
+    dataRoot = fullfile(options.StageRoot, 'data');
+    matlabPaths = matlabPaths(~startsWith(matlabPaths, dataRoot));
 
     % Get path to the icon file
     iconFile = fullfile(options.RepoRoot, 'images', 'cantera-icon.png');
@@ -122,6 +134,15 @@ function ctPackageToolbox(options)
 
     relBase = "https://github.com/" + repoSlug + "/releases/download/" + releaseTag;
     licenseURL = "https://raw.githubusercontent.com/" + repoSlug + "/" + releaseTag + "/LICENSE";
+
+    % Serve the assets from elsewhere, e.g. a local web server when testing an
+    % unreleased build, whose GitHub release does not exist. LICENSE must sit
+    % beside the zips there.
+    if options.DownloadBaseURL ~= ""
+        relBase = strip(options.DownloadBaseURL, "right", "/");
+        licenseURL = relBase + "/LICENSE";
+    end
+    fprintf("Interface download base: %s\n", relBase);
 
     % Map release asset labels (linux/windows/macos) to MATLAB platform keys.
     opts.RequiredAdditionalSoftware = [

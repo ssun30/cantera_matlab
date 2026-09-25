@@ -34,73 +34,59 @@ The toolbox is distributed through MATLAB File Exchange:
 
 Because of MathWorks File Exchange policy, the **pre-built interface library is
 not shipped inside the `.mltbx`**. Instead, MATLAB **automatically downloads**
-the compiled interface for your platform when you install the toolbox. You then
-move it into the toolbox and add it to the path. Installation therefore has two
-parts:
+the compiled interface for your platform when you install the toolbox.
+
+**You do not need to install Cantera separately.** The download includes a
+self-contained Cantera library — every third-party dependency is vendored and
+statically linked, so it depends on nothing beyond the operating system — and
+the toolbox ships Cantera's standard data files (`gri30.yaml`, `air.yaml`, and
+the rest). No conda environment, no `LD_LIBRARY_PATH`, no compiler.
+
+> **Prefer a guided walkthrough?** When you install the toolbox, MATLAB opens
+> its **Getting Started** guide — a live script that runs `ct.install` and a
+> first simulation step by step. You can follow it instead of the steps below.
+> To reopen it later, go to **Home > Add-Ons > Manage Add-Ons**, click the
+> **⋮** menu next to *Cantera MATLAB Toolbox*, and choose **Open Getting
+> Started Guide**.
 
 ### 1. Install the `.mltbx`
 
-Download the `.mltbx` and double-click it (or use the MATLAB Add-On Manager) to
-add the toolbox to MATLAB's add-ons. During installation MATLAB prompts you to
-install "third-party software" and downloads the compiled interface for your
-platform into an `AdditionalSoftware` folder.
+Download the `.mltbx` and double-click it (or use the MATLAB Add-On Manager).
+When MATLAB prompts you to install "third-party software", accept: that is the
+compiled interface for your platform.
 
-### 2. Move the downloaded interface library into the toolbox
-
-The downloaded interface lands in an `AdditionalSoftware` folder that sits next
-to the installed toolbox, under the MATLAB Add-Ons directory:
-
-```
-<MATLAB Add-Ons>/Toolboxes/
-├── Cantera MATLAB Toolbox/        ← the installed toolbox
-└── AdditionalSoftware/
-    └── ctMatlabInterface/
-        └── ctMatlab/              ← the downloaded interface library
-```
-
-To get the exact path on your machine, run in MATLAB:
+### 2. Run `ct.install` once
 
 ```matlab
-CanteraMATLABToolbox.getInstallationLocation("ctMatlabInterface")
+ct.install
 ```
 
-(The Add-Ons installation folder is also shown in **MATLAB Preferences →
-Add-Ons** and in the Add-On Manager.)
+This moves the downloaded interface into the toolbox, registers the bundled
+data directory, and verifies that Cantera loads. The settings are saved as
+MATLAB preferences, so this is needed only once; running it again does nothing
+unless the installation is incomplete. To redo it, use `ct.install(Force=true)`.
 
-Move the `ctMatlab` folder out of `AdditionalSoftware` and into the installed
-toolbox so it ends up at:
-
-```
-Cantera MATLAB Toolbox/toolbox/+ct/+impl/ctMatlab/
-```
-
-Then add that folder to the MATLAB path and save it (this is required — the
-`+ct/+impl/ctMatlab` folder is not on the path automatically):
+If the interface was downloaded somewhere other than the Add-On Manager's
+default location, point `ct.install` at it:
 
 ```matlab
-addpath("<...>/Cantera MATLAB Toolbox/toolbox/+ct/+impl/ctMatlab")
-savepath
+ct.install(Source="path/to/ctMatlab")
 ```
 
-> **Alternatively, build the interface yourself** with `ct.buildInterface` (see
-> the interface README in the main Cantera repo) and place the result in the
-> same location. `ct.buildInterface` adds it to the path and saves it for you,
-> so no separate `addpath`/`savepath` step is needed.
+### 3. Use Cantera
 
-> This manual move will be automated in a future release.
+Load Cantera at the start of each session:
 
-### 3. Load Cantera
+```matlab
+ct.load
+gas = ct.Solution("gri30.yaml");
+```
 
-**You do not need to install Cantera separately.** The download in step 1
-includes a self-contained Cantera library — every third-party dependency is
-vendored and statically linked, so it depends on nothing beyond the operating
-system. No conda environment, no `LD_LIBRARY_PATH`, no compiler.
+### Uninstalling
 
-Run `ct.load` for the first time. If you are prompted for the Cantera library
-directory, point it at the same `ctMatlab` folder you moved in step 2 — the
-library ships alongside the interface. The choice is remembered for future
-sessions, and the data directory is registered automatically. See the interface
-usage guide for details (`ct.configureCanteraDirectories`, execution modes).
+Run `ct.uninstall` **first**, then remove the toolbox in the Add-On Manager.
+`ct.uninstall` clears the saved Cantera preferences and path entry, and it is
+part of the toolbox, so it is no longer available once the toolbox is removed.
 
 ---
 
@@ -137,6 +123,7 @@ Set these environment variables before building:
 | `CANTERA_LIB_PATH`       | Optional override; set automatically by `buildCanteraLibrary`       |
 | `BOOST_INC_DIR`          | Optional. Boost headers, if not on the default include path         |
 | `PYTHON`                 | Optional. Full path to the interpreter that drives SCons            |
+| `CT_DOWNLOAD_BASE_URL`   | Optional. Where the `.mltbx` downloads the interface from (see below) |
 
 > Set `PYTHON` if the build fails with exit code 9009: MATLAB's `PATH` often
 > holds only the Microsoft Store stub rather than a real interpreter.
@@ -166,6 +153,23 @@ export CANTERA_USE_SYSTEM_LIB=1
 export CANTERA_INCLUDE_PATH=...   # must contain a cantera_clib subfolder
 export CANTERA_LIB_PATH=...
 ```
+
+### Testing an unreleased build locally
+
+The `.mltbx` downloads the interface from this repository's GitHub release for
+its version, so a locally built package whose release does not exist cannot be
+installed. Serve the assets yourself instead, and package against that server:
+
+```powershell
+mkdir build\serve
+Compress-Archive -Path "TMP\toolbox\+ct\+impl\ctMatlab" -DestinationPath "build\serve\cantera-matlab-interface-windows.zip"
+Copy-Item LICENSE build\serve\
+cd build\serve; python -m http.server 8000     # leave running
+```
+
+Then, in another session, set `CT_DOWNLOAD_BASE_URL=http://localhost:8000`,
+run `buildtool package`, and install the resulting `.mltbx`. Packaging prints
+the download base it used; never publish a package built with a local one.
 
 ### Build tasks
 
