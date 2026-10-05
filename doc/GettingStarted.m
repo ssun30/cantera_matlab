@@ -6,10 +6,10 @@
 % *What this toolbox is:* a MATLAB interface to Cantera, the open-source
 % toolkit for chemical kinetics, thermodynamics, and transport.
 %
-% *Everything you need is included.* When you installed the toolbox, MATLAB
-% also downloaded a self-contained Cantera library for your platform, and the
-% toolbox ships Cantera's standard data files (reaction mechanisms such as
-% |gri30.yaml|). You do *not* need to install Cantera, conda, or a compiler.
+% *Everything you need is included.* The toolbox ships a self-contained
+% Cantera library for your platform and Cantera's standard data files
+% (reaction mechanisms such as |gri30.yaml|). You do *not* need to install
+% Cantera, conda, or a compiler.
 %
 % Work through the steps in order. You only need to do Step 1 once.
 
@@ -20,15 +20,9 @@
 ct.install
 
 %%
-% This moves the downloaded Cantera library into the toolbox, registers the
-% bundled data files, and checks that Cantera loads. MATLAB remembers the
-% result, so you never need to run it again; running it again does nothing.
-%
-% If the library was downloaded somewhere other than the usual location,
-% point |ct.install| at the folder containing it (delete the leading % and
-% edit the path):
-%
-%   % ct.install(Source="path/to/ctMatlab")
+% This registers the bundled data files and checks that Cantera loads. MATLAB
+% remembers the result, so you never need to run it again; running it again
+% does nothing.
 
 %% Step 2 - Load Cantera
 % Load the interface at the start of each MATLAB session:
@@ -65,13 +59,10 @@ ct.unload
 %   % ct.uninstall
 
 %% Troubleshooting
-% *ct.install cannot find the downloaded interface* - MATLAB may have placed
-% it elsewhere, or the "third-party software" download was declined during
-% installation. Find the folder containing |ctMatlabInterface| and pass it with
-% |ct.install(Source=...)|, or reinstall the toolbox and accept the download.
-%
-% *The Cantera MATLAB interface was not found* (from |ct.load|) - Step 1 has
-% not been run, or did not complete. Run |ct.install|.
+% *The Cantera MATLAB interface was not found* (from |ct.load|) - the
+% installed toolbox has no compiled interface for your platform. Reinstall
+% the toolbox; if the error persists, this release does not support your
+% platform.
 %
 % *Error: could not find input file 'gri30.yaml'* (or similar) - the data
 % folder is not registered. Run |ct.install(Force=true)| to set it up again;

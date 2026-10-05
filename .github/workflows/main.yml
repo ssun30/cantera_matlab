@@ -179,4 +179,4 @@ jobs:
       - name: Run buildtool tests
         uses: matlab-actions/run-build@v3
         with:
-          tasks: test
+          tasks: test package

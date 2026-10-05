@@ -1,11 +1,8 @@
 name: MATLAB Release
-# This workflow produces and publishes the release artifacts:
-#   Cantera_MATLAB_Toolbox_<version>.mltbx
-#   cantera-matlab-interface-<os>.zip        (compiled interface + library, os-specific)
-# The interface cannot live inside the .mltbx (File Exchange policy), so the
-# package declares these zips as RequiredAdditionalSoftware and MATLAB fetches
-# the right one at install time. Their URLs are built from this tag, so the
-# asset names here and in ctPackageToolbox.m must agree.
+# Produces and publishes Cantera_MATLAB_Toolbox_<version>.mltbx. Each platform
+# job builds the compiled interface and library; the package job merges all
+# three into one stage and packages once, so a single .mltbx serves every
+# platform. File Exchange accepts binaries in a package built by CI.
 
 on:
   push:
@@ -71,8 +68,8 @@ jobs:
             echo "version=$VERSION"
           } >> "$GITHUB_OUTPUT"
 
-  package:
-    name: Package on ${{ matrix.label }}
+  build:
+    name: Build on ${{ matrix.label }}
     needs: resolve
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -191,7 +188,7 @@ jobs:
         with:
           release: ${{ env.MATLAB_RELEASE }}
 
-      - name: Build the toolbox and interface
+      - name: Build the interface
         uses: matlab-actions/run-build@v3
         with:
           tasks: buildInterface
@@ -207,29 +204,76 @@ jobs:
           test -n "$lib" || { echo "no library beside the interface"; exit 1; }
           python buildUtilities/audit_library.py --library "$lib"
 
-      - name: Archive the interface (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          cd TMP/toolbox/+ct/+impl
-          zip -r "$GITHUB_WORKSPACE/cantera-matlab-interface-${{ matrix.label }}.zip" ctMatlab
-
-      - name: Archive the interface (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: >
-          Compress-Archive
-          -Path "TMP/toolbox/+ct/+impl/ctMatlab"
-          -DestinationPath "cantera-matlab-interface-${{ matrix.label }}.zip"
-
-      - name: Upload the interface artifact
+      - name: Upload the interface
         uses: actions/upload-artifact@v4
         with:
           name: interface-${{ matrix.label }}
-          path: cantera-matlab-interface-${{ matrix.label }}.zip
+          path: TMP/toolbox/+ct/+impl/ctMatlab/
           if-no-files-found: error
 
-      - name: Upload the toolbox (.mltbx)
-        if: runner.os == 'Linux'
+  package:
+    name: Package the toolbox
+    needs: [resolve, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      CANTERA_ROOT: ${{ github.workspace }}/cantera
+      TOOLBOX_VERSION: ${{ needs.resolve.outputs.version }}
+    steps:
+      - name: Check out cantera_matlab
+        uses: actions/checkout@v4
+
+      - name: Check out Cantera
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CANTERA_REPO }}
+          ref: ${{ needs.resolve.outputs.ref }}
+          path: cantera
+          persist-credentials: false
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v3
+        with:
+          release: ${{ env.MATLAB_RELEASE }}
+
+      - name: Stage the toolbox
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath("buildUtilities"); ctStageToolbox();
+
+      - name: Download the interfaces
+        uses: actions/download-artifact@v4
+        with:
+          pattern: interface-*
+          path: interfaces
+
+      # The platforms' file names never overlap (.dll / .so / .dylib), so all
+      # three share one folder and MATLAB loads its own. Refuse to overwrite in
+      # case that ever stops being true.
+      - name: Merge the interfaces into the stage
+        run: |
+          dest="TMP/toolbox/+ct/+impl/ctMatlab"
+          mkdir -p "$dest"
+          for dir in interfaces/interface-*; do
+            for file in "$dir"/*; do
+              name=$(basename "$file")
+              if [ -e "$dest/$name" ]; then
+                echo "::error::$name is provided by more than one platform"
+                exit 1
+              fi
+              cp "$file" "$dest/"
+            done
+          done
+          ls -l "$dest"
+
+      - name: Package the toolbox
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath("buildUtilities"); ctPackageToolbox();
+
+      - name: Upload the toolbox
         uses: actions/upload-artifact@v4
         with:
           name: toolbox-mltbx
@@ -244,15 +288,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      - name: Download the toolbox
         uses: actions/download-artifact@v4
         with:
+          name: toolbox-mltbx
           path: dist
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/**/*.mltbx
-            dist/**/*.zip
+          files: dist/*.mltbx
           generate_release_notes: true

@@ -14,14 +14,14 @@ under `interfaces/matlab`.
 
 The pipeline:
 
-1. **Stage** the Cantera MATLAB interface (and samples) from a checkout of the
-   main Cantera repo.
-2. **Package** the pure-MATLAB tree into a `.mltbx` for distribution.
-3. **Build** a self-contained Cantera library from source, with every
+1. **Stage** the Cantera MATLAB interface, samples, and data files from a
+   checkout of the main Cantera repo.
+2. **Build** a self-contained Cantera library from source, with every
    third-party dependency vendored and statically linked, so users need no
    Cantera installation of their own.
-4. **Build** the C++ interface against that library, and **test** that the
+3. **Build** the C++ interface against that library, and **test** that the
    staged toolbox loads and works.
+4. **Package** everything, binaries included, into a `.mltbx`.
 
 ---
 
@@ -32,11 +32,8 @@ The toolbox is distributed through MATLAB File Exchange:
 > **Cantera MATLAB Toolbox** (temporary link):
 > https://www.mathworks.com/matlabcentral/fileexchange/183781-cantera_matlab
 
-Because of MathWorks File Exchange policy, the **pre-built interface library is
-not shipped inside the `.mltbx`**. Instead, MATLAB **automatically downloads**
-the compiled interface for your platform when you install the toolbox.
-
-**You do not need to install Cantera separately.** The download includes a
+**You do not need to install Cantera separately.** The toolbox includes the
+compiled interface for Windows, Linux, and macOS, together with a
 self-contained Cantera library — every third-party dependency is vendored and
 statically linked, so it depends on nothing beyond the operating system — and
 the toolbox ships Cantera's standard data files (`gri30.yaml`, `air.yaml`, and
@@ -52,8 +49,6 @@ the rest). No conda environment, no `LD_LIBRARY_PATH`, no compiler.
 ### 1. Install the `.mltbx`
 
 Download the `.mltbx` and double-click it (or use the MATLAB Add-On Manager).
-When MATLAB prompts you to install "third-party software", accept: that is the
-compiled interface for your platform.
 
 ### 2. Run `ct.install` once
 
@@ -61,17 +56,9 @@ compiled interface for your platform.
 ct.install
 ```
 
-This moves the downloaded interface into the toolbox, registers the bundled
-data directory, and verifies that Cantera loads. The settings are saved as
+This registers the bundled data directory and verifies that Cantera loads. The settings are saved as
 MATLAB preferences, so this is needed only once; running it again does nothing
 unless the installation is incomplete. To redo it, use `ct.install(Force=true)`.
-
-If the interface was downloaded somewhere other than the Add-On Manager's
-default location, point `ct.install` at it:
-
-```matlab
-ct.install(Source="path/to/ctMatlab")
-```
 
 ### 3. Use Cantera
 
@@ -85,7 +72,7 @@ gas = ct.Solution("gri30.yaml");
 ### Uninstalling
 
 Run `ct.uninstall` **first**, then remove the toolbox in the Add-On Manager.
-`ct.uninstall` clears the saved Cantera preferences and path entry, and it is
+`ct.uninstall` clears the saved Cantera preferences and unloads Cantera, and it is
 part of the toolbox, so it is no longer available once the toolbox is removed.
 
 ---
@@ -123,7 +110,6 @@ Set these environment variables before building:
 | `CANTERA_LIB_PATH`       | Optional override; set automatically by `buildCanteraLibrary`       |
 | `BOOST_INC_DIR`          | Optional. Boost headers, if not on the default include path         |
 | `PYTHON`                 | Optional. Full path to the interpreter that drives SCons            |
-| `CT_DOWNLOAD_BASE_URL`   | Optional. Where the `.mltbx` downloads the interface from (see below) |
 
 > Set `PYTHON` if the build fails with exit code 9009: MATLAB's `PATH` often
 > holds only the Microsoft Store stub rather than a real interpreter.
@@ -154,23 +140,6 @@ export CANTERA_INCLUDE_PATH=...   # must contain a cantera_clib subfolder
 export CANTERA_LIB_PATH=...
 ```
 
-### Testing an unreleased build locally
-
-The `.mltbx` downloads the interface from this repository's GitHub release for
-its version, so a locally built package whose release does not exist cannot be
-installed. Serve the assets yourself instead, and package against that server:
-
-```powershell
-mkdir build\serve
-Compress-Archive -Path "TMP\toolbox\+ct\+impl\ctMatlab" -DestinationPath "build\serve\cantera-matlab-interface-windows.zip"
-Copy-Item LICENSE build\serve\
-cd build\serve; python -m http.server 8000     # leave running
-```
-
-Then, in another session, set `CT_DOWNLOAD_BASE_URL=http://localhost:8000`,
-run `buildtool package`, and install the resulting `.mltbx`. Packaging prints
-the download base it used; never publish a package built with a local one.
-
 ### Build tasks
 
 The build is orchestrated by MATLAB's `buildtool` (see `buildfile.m`). From the
@@ -178,26 +147,26 @@ repository root:
 
 | Command                         | Description                                                        |
 | ------------------------------- | ----------------------------------------------------------------- |
-| `buildtool stage`               | Copy the interface and samples from `CANTERA_ROOT` into `TMP/`.    |
-| `buildtool package`             | Build the `.mltbx` into `release/` (depends on `stage`).           |
+| `buildtool stage`               | Copy the interface, samples, and data from `CANTERA_ROOT` into `TMP/`. |
 | `buildtool buildCanteraLibrary` | Build the self-contained Cantera library into `build/canteraLib/`. |
-| `buildtool buildInterface`      | Compile the C++ interface into the staged tree (depends on `package` and `buildCanteraLibrary`). |
+| `buildtool buildInterface`      | Compile the C++ interface into the staged tree (depends on `stage` and `buildCanteraLibrary`). |
 | `buildtool test`                | Run smoke tests against the staged, built toolbox (depends on `buildInterface`). |
-| `buildtool`                     | Run the full chain; `test` is the default task.                    |
+| `buildtool package`             | Build the `.mltbx`, binaries included, into `release/` (depends on `buildInterface`). |
+| `buildtool`                     | Run `test` and `package`, the default tasks.                       |
 
 `buildCanteraLibrary` builds from `CANTERA_ROOT` rather than the staged tree,
 so it is a second root task joining the chain at `buildInterface`:
 
 ```
-stage ─→ package ─┐
-                  ├─→ buildInterface ─→ test
-buildCanteraLibrary ─┘
+stage ───────────────┐
+                     ├─→ buildInterface ─┬─→ test
+buildCanteraLibrary ─┘                   └─→ package
 ```
 
-**`package` runs before `buildInterface`**, so the distributable `.mltbx` is
-produced without the compiled binary (per File Exchange policy). The later
-steps build the interface into the staging tree only, to verify it compiles
-and loads.
+A local `buildtool package` includes only the current platform's binaries, and
+installs directly for testing. The release workflow builds the interface on
+all three platforms, merges them into one stage, and packages once, so the
+published `.mltbx` serves every platform.
 
 ### Outputs
 
