@@ -202,7 +202,7 @@ jobs:
                 -name '*cantera_shared*' ! -type l | head -1)
           echo "shipped library: $lib"
           test -n "$lib" || { echo "no library beside the interface"; exit 1; }
-          python buildUtilities/audit_library.py --library "$lib"
+          python TMP/toolbox/buildUtilities/audit_library.py --library "$lib"
 
       - name: Upload the interface
         uses: actions/upload-artifact@v4

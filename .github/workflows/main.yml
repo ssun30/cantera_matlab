@@ -151,7 +151,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/canteraLib
-          key: canteraLib-${{ matrix.os }}-${{ hashFiles('buildUtilities/build_cantera_library.py') }}-${{ steps.cantera.outputs.sha }}
+          key: canteraLib-${{ matrix.os }}-${{ hashFiles('cantera/interfaces/matlab/buildUtilities/build_cantera_library.py') }}-${{ steps.cantera.outputs.sha }}
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v3
@@ -170,7 +170,7 @@ jobs:
       # The build script audits what it builds, but skips on a cache hit, so
       # audit here too: a restored library must meet the same bar.
       - name: Audit the Cantera library
-        run: python buildUtilities/audit_library.py --prefix build/canteraLib
+        run: python TMP/toolbox/buildUtilities/audit_library.py --prefix build/canteraLib
 
       - name: Add the Cantera library to PATH (Windows)
         if: runner.os == 'Windows'

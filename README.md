@@ -122,8 +122,11 @@ Set these environment variables before building:
 
 `buildtool buildCanteraLibrary` builds Cantera with every third-party
 dependency vendored and statically linked (`system_*=n`, no external
-BLAS/LAPACK, no HDF5), then checks with `buildUtilities/audit_library.py` that
+BLAS/LAPACK, no HDF5), then checks with `audit_library.py` that
 the result depends on nothing outside a per-platform allowlist of OS libraries.
+Both scripts (`build_cantera_library.py` and `audit_library.py`) live in Cantera's
+`interfaces/matlab/buildUtilities`; `buildtool stage` copies them into the staged
+toolbox, and `buildtool package` leaves them out of the MLTBX.
 MATLAB's `clibgen` copies it next to the generated interface, so it ships
 inside the `ctMatlab` bundle automatically.
 

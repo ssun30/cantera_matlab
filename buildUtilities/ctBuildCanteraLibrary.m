@@ -6,11 +6,15 @@ function ctBuildCanteraLibrary(options)
 % CANTERA_INCLUDE_PATH and CANTERA_LIB_PATH to the result, which is where
 % ctBuildInterface picks them up.
 %
+% The build and audit scripts come from Cantera's interfaces/matlab/buildUtilities,
+% so the toolbox must be staged first (buildtool stage).
+%
 % Set CANTERA_USE_SYSTEM_LIB=1 to skip the build and use whatever those two
 % variables already point at.
 
     arguments
         options.RepoRoot (1,1) string = ""
+        options.StageRoot (1,1) string = ""
         options.CanteraRoot (1,1) string = string(getenv("CANTERA_ROOT"))
         options.Prefix (1,1) string = ""
         options.Force (1,1) logical = false
@@ -21,9 +25,13 @@ function ctBuildCanteraLibrary(options)
         options.RepoRoot = inferRepoRoot();
     end
 
+    if options.StageRoot == ""
+        options.StageRoot = fullfile(options.RepoRoot, "TMP");
+    end
+
     if options.Prefix == ""
-        % Outside TMP: ctStageToolbox deletes the whole staging root, and
-        % buildtool does not fix the order of the two root tasks.
+        % Outside TMP: ctStageToolbox deletes the whole staging root on every
+        % run, which would discard the library and force a rebuild.
         options.Prefix = fullfile(options.RepoRoot, "build", "canteraLib");
     end
 
@@ -78,7 +86,14 @@ end
 function runBuildScript(options)
 %RUNBUILDSCRIPT Invoke the SCons driver outside MATLAB's library environment.
 
-    script = fullfile(fileparts(mfilename("fullpath")), "build_cantera_library.py");
+    script = fullfile(options.StageRoot, "toolbox", "buildUtilities", ...
+                      "build_cantera_library.py");
+    if ~isfile(script)
+        error("ctBuildCanteraLibrary:MissingScript", ...
+            ("The staged toolbox has no %s. Run buildtool stage first, " + ...
+             "with CANTERA_ROOT pointing at a Cantera checkout that " + ...
+             "provides interfaces/matlab/buildUtilities."), script);
+    end
 
     cmd = string(sprintf('%s "%s" --cantera-root "%s" --prefix "%s"', ...
         quoteIfNeeded(pythonExecutable()), script, ...

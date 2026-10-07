@@ -3,8 +3,9 @@ function plan = buildfile()
 
     plan.DefaultTasks = ["test", "package"];
 
-    % buildCanteraLibrary builds from CANTERA_ROOT rather than the staged tree,
-    % so it is a second root task; buildInterface is where the two meet.
+    % buildCanteraLibrary builds from CANTERA_ROOT, but runs the build scripts
+    % from the staged copy of Cantera's interfaces/matlab/buildUtilities.
+    plan("buildCanteraLibrary").Dependencies = "stage";
     plan("buildInterface").Dependencies = ["stage", "buildCanteraLibrary"];
     plan("test").Dependencies = "buildInterface";
     % The package includes the compiled interface, so it comes last.
