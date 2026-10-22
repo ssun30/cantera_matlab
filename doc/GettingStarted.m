@@ -58,6 +58,11 @@ ct.unload
 %
 %   open CanteraTutorial
 %
+% A second tutorial applies Cantera to a lithium-ion battery, computing its
+% open-circuit voltage and discharge curves:
+%
+%   open LithiumIonBattery
+%
 % The example scripts in the |samples| folder of the toolbox show complete
 % simulations, including reactor networks and flames.
 

@@ -78,8 +78,11 @@ guide. Open one by name, for example:
 open CanteraTutorial
 ```
 
-`CanteraTutorial` covers setting the thermodynamic state, working with
-mechanism files, chemical equilibrium, and reaction rates.
+* `CanteraTutorial` covers setting the thermodynamic state, working with
+  mechanism files, chemical equilibrium, and reaction rates.
+* `LithiumIonBattery` computes the open-circuit voltage of a lithium-ion cell
+  from thermodynamics and from electrode kinetics, and its discharge curves
+  at several currents.
 
 ### Uninstalling
 
