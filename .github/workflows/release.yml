@@ -23,8 +23,8 @@ concurrency:
 
 env:
   # TEMP (pre-alpha): package the in-development interface from the fork.
-  # After merging into Cantera/cantera, set CANTERA_REPO back and restore
-  # release-tag / latest-release ref resolution in the "resolve" job.
+  # After the Cantera PRs are merged, set CANTERA_REPO to Cantera/cantera and
+  # CANTERA_DEFAULT_REF to the Cantera ref to package.
   CANTERA_REPO: ssun30/cantera
   # cantera_matlab_demo_branch combines the pending Cantera PRs (#2187 and #2177).
   CANTERA_DEFAULT_REF: cantera_matlab_demo_branch
@@ -51,11 +51,13 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          # TEMP (pre-alpha): build against CANTERA_DEFAULT_REF on the fork.
-          # After merge, restore: tag push -> the matching Cantera release.
+          # The Cantera source: CANTERA_DEFAULT_REF, or the ref given when the
+          # workflow is run manually.
           REF="${INCOMING_REF:-$CANTERA_DEFAULT_REF}"
 
-          # X.Y.Z from the pushed tag; a placeholder for manual dispatch.
+          # The toolbox version is chosen by the maintainer through the tag
+          # (X.Y.Z from the pushed tag) and need not match the Cantera version.
+          # Manual runs use a placeholder. main.yml applies the same rule.
           if [ "$REF_TYPE" = "tag" ]; then
             VERSION="$(printf '%s' "$REF_NAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
           fi
@@ -133,8 +135,6 @@ jobs:
           brew install --display-times boost doxygen
           echo "BOOST_INC_DIR=$(brew --prefix)/include" >> "$GITHUB_ENV"
 
-      # Downloaded fresh for every release build rather than cached: the release is
-      # published, so it must not depend on a cache that could have been poisoned.
       - name: Install Boost headers (Windows)
         if: runner.os == 'Windows'
         run: |
@@ -163,8 +163,6 @@ jobs:
           "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
             -products '*' -format value -property displayName || true
 
-      # setup-python points it at its own lib directory, which MATLAB then
-      # inherits and crashes on. Nothing here needs it.
       - name: Keep LD_LIBRARY_PATH out of MATLAB's environment
         if: runner.os != 'Windows'
         run: echo "LD_LIBRARY_PATH=" >> "$GITHUB_ENV"
@@ -242,9 +240,6 @@ jobs:
           pattern: interface-*
           path: interfaces
 
-      # The platforms' file names never overlap (.dll / .so / .dylib), so all
-      # three share one folder and MATLAB loads its own. Refuse to overwrite in
-      # case that ever stops being true.
       - name: Merge the interfaces into the stage
         run: |
           dest="TMP/toolbox/+ct/+impl/ctMatlab"

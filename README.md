@@ -116,7 +116,7 @@ Set these environment variables before building:
 | Variable                 | Purpose                                                            |
 | ------------------------ | ------------------------------------------------------------------ |
 | `CANTERA_ROOT`           | Path to the main Cantera source checkout (staged, and built)        |
-| `TOOLBOX_VERSION`        | Semantic version for the package, e.g. `3.2.0`                     |
+| `TOOLBOX_VERSION`        | Semantic version for the package, e.g. `3.9.2`; independent of the Cantera version. CI takes it from the pushed tag (`v3.9.2`), or uses `0.0.0` |
 | `CANTERA_USE_SYSTEM_LIB` | Optional. Set to `1` to skip the library build (see below)          |
 | `CANTERA_INCLUDE_PATH`   | Optional override; set automatically by `buildCanteraLibrary`       |
 | `CANTERA_LIB_PATH`       | Optional override; set automatically by `buildCanteraLibrary`       |
