@@ -3,8 +3,6 @@ function ctPackageToolbox(options)
         options.RepoRoot (1,1) string = ""
         options.StageRoot (1,1) string = ""
         options.Version (1,1) string = string(getenv("TOOLBOX_VERSION"))
-        options.RepoSlug (1,1) string = ""
-        options.ReleaseTag (1,1) string = ""
         options.Clean (1,1) logical = true
         options.Verbose (1,1) logical = true
     end
@@ -51,14 +49,33 @@ function ctPackageToolbox(options)
     % the generated .mlx is included in the package.
     guidePath = stageGettingStartedGuide(options.RepoRoot, options.StageRoot);
 
-    % Collect packaged files
+    % Collect packaged files. The library build scripts staged from Cantera's
+    % interfaces/matlab/buildUtilities are only used to build the toolbox, so
+    % they are left out of the package.
     files = dir(fullfile(options.StageRoot, '**', '*'));
     files = files(~[files.isdir]);
     allFiles = fullfile({files.folder}, {files.name})';
+    buildScriptsDir = fullfile(options.StageRoot, 'toolbox', 'buildUtilities');
+    allFiles = allFiles(~startsWith(allFiles, buildScriptsDir));
 
-    % Get relative MATLAB paths from actual packaged file locations
+    % The compiled interface ships inside the package. The stage holds one
+    % platform's build locally; the release workflow merges all three into it.
+    interfaceDir = fullfile(options.StageRoot, 'toolbox', '+ct', '+impl', 'ctMatlab');
+    platforms = interfacePlatforms(interfaceDir);
+    names = string(fieldnames(platforms));
+    included = names(cellfun(@(x) x, struct2cell(platforms)));
+    fprintf('Packaging interface binaries for: %s\n', strjoin(included, ', '));
+
+    % The data directory is packaged but kept off the MATLAB path: Cantera
+    % resolves data files through its own search path, not MATLAB's. The
+    % interface folder is added explicitly, because genpath skips folders
+    % inside a package folder, so that the installer puts it on the path.
     matlabPaths = strsplit(genpath(options.StageRoot), pathsep);
     matlabPaths = matlabPaths(~cellfun(@isempty, matlabPaths));
+    dataRoot = fullfile(options.StageRoot, 'data');
+    matlabPaths = matlabPaths(~startsWith(matlabPaths, dataRoot));
+    matlabPaths = matlabPaths(~startsWith(matlabPaths, buildScriptsDir));
+    matlabPaths{end+1} = char(interfaceDir);
 
     % Get path to the icon file
     iconFile = fullfile(options.RepoRoot, 'images', 'cantera-icon.png');
@@ -82,63 +99,38 @@ function ctPackageToolbox(options)
         opts.ToolboxGettingStartedGuide  = guidePath;
     end
     opts.ToolboxImageFile                = iconFile;
-    opts.MinimumMatlabRelease            = 'R2022b';
+    % Minimum supported release, verified by CI. Raising this is a breaking
+    % change for users on older MATLAB: the Add-On Manager refuses to install
+    % the .mltbx below it.
+    opts.MinimumMatlabRelease            = 'R2024b';
     opts.OutputFile                      = outputFile;
-    opts.SupportedPlatforms.Win64        = true;
-    opts.SupportedPlatforms.Glnxa64      = true;
-    opts.SupportedPlatforms.Maci64       = true;
+    opts.SupportedPlatforms.Win64        = platforms.Win64;
+    opts.SupportedPlatforms.Glnxa64      = platforms.Glnxa64;
+    if isfield(opts.SupportedPlatforms, 'Mac')  % R2026a replaced Maci64 with Mac
+        opts.SupportedPlatforms.Mac      = platforms.Mac;
+    else
+        opts.SupportedPlatforms.Maci64   = platforms.Mac;
+    end
     opts.SupportedPlatforms.MatlabOnline = false;
 
-    % Download the platform-specific compiled interface on install.
-    % The clib interface (plus the bundled cantera_shared runtime) is too
-    % platform-specific to embed in a single cross-platform .mltbx, so it is
-    % published as per-OS release assets and fetched by MATLAB at install time
-    % based on the user's platform. Resolve the publishing repo from
-    % GITHUB_REPOSITORY (set automatically in CI) with a fallback for local
-    % packaging.
-    % TEMP (pre-alpha): fallback slug points at the fork; drop it once the
-    % toolbox repo is finalized (see CANTERA_REPO note in release.yml).
-    repoSlug = options.RepoSlug;
-    if repoSlug == ""
-        repoSlug = strip(string(getenv("GITHUB_REPOSITORY")));
-    end
-    if repoSlug == ""
-        repoSlug = "ssun30/cantera_matlab";
+    matlab.addons.toolbox.packageToolbox(opts);
+    fprintf('Toolbox built: %s\n', outputFile);
+end
+
+function platforms = interfacePlatforms(interfaceDir)
+%INTERFACEPLATFORMS Report which platforms' compiled interfaces are present.
+
+    extensions = struct('Win64', 'dll', 'Glnxa64', 'so', 'Mac', 'dylib');
+    platforms = struct();
+    for name = string(fieldnames(extensions))'
+        platforms.(name) = isfile(fullfile(interfaceDir, ...
+            "ctMatlabInterface." + extensions.(name)));
     end
 
-    % The release tag is used to construct the download URLs for the platform-specific compiled interface. It is inferred from the GITHUB_REF_NAME environment variable (set automatically in CI).
-    releaseTag = options.ReleaseTag;
-    if releaseTag == "" && string(getenv("GITHUB_REF_TYPE")) == "tag"
-        releaseTag = strip(string(getenv("GITHUB_REF_NAME")));
-    end
-
-    % Local release tag override for testing.
-    if releaseTag == ""
-        releaseTag = "v" + ver;
-    end
-
-    relBase = "https://github.com/" + repoSlug + "/releases/download/" + releaseTag;
-    licenseURL = "https://raw.githubusercontent.com/" + repoSlug + "/" + releaseTag + "/LICENSE";
-
-    % Map release asset labels (linux/windows/macos) to MATLAB platform keys.
-    opts.RequiredAdditionalSoftware = [
-        struct("Name", "ctMatlabInterface", "Platform", "win64", ...
-               "DownloadURL", relBase + "/cantera-matlab-interface-windows.zip", ...
-               "LicenseURL", licenseURL)
-        struct("Name", "ctMatlabInterface", "Platform", "glnxa64", ...
-               "DownloadURL", relBase + "/cantera-matlab-interface-linux.zip", ...
-               "LicenseURL", licenseURL)
-        struct("Name", "ctMatlabInterface", "Platform", "mac", ...
-               "DownloadURL", relBase + "/cantera-matlab-interface-macos.zip", ...
-               "LicenseURL", licenseURL)
-    ];
-
-    % Package the toolbox
-    try
-        matlab.addons.toolbox.packageToolbox(opts);
-        fprintf('✅ Toolbox built successfully!\n');
-    catch ME
-        fprintf('❌ Toolbox build failed: %s\n', ME.message);
+    if ~any(cellfun(@(x) x, struct2cell(platforms)))
+        error("ctPackageToolbox:NoInterface", ...
+            ("No compiled interface in %s. Run buildtool buildInterface " + ...
+             "before packaging."), interfaceDir);
     end
 end
 
