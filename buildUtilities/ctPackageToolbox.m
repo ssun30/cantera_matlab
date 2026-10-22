@@ -48,6 +48,7 @@ function ctPackageToolbox(options)
     % into a .mlx inside the staged toolbox. Do this before collecting files so
     % the generated .mlx is included in the package.
     guidePath = stageGettingStartedGuide(options.RepoRoot, options.StageRoot);
+    stageTutorials(options.RepoRoot, options.StageRoot);
 
     % Collect packaged files. The library build scripts staged from Cantera's
     % interfaces/matlab/buildUtilities are only used to build the toolbox, so
@@ -178,10 +179,11 @@ function guidePath = stageGettingStartedGuide(repoRoot, stageRoot)
 %STAGEGETTINGSTARTEDGUIDE Convert doc/GettingStarted.m to .mlx in the stage.
 %
 % The Getting Started guide is authored as a live-script .m (for version
-% control) and converted to .mlx at package time so it can be registered as the
-% toolbox Getting Started guide. Returns the staged .mlx path, or "" if the
-% source is missing or conversion is unavailable (packaging then proceeds
-% without a guide rather than failing).
+% control) and converted at package time to doc/GettingStarted.mlx at the root
+% of the stage, next to the toolbox, samples and data folders, so it can be
+% registered as the toolbox Getting Started guide. Returns the staged .mlx path,
+% or "" if the source is missing or conversion is unavailable (packaging then
+% proceeds without a guide rather than failing).
 
     guidePath = "";
 
@@ -193,7 +195,11 @@ function guidePath = stageGettingStartedGuide(repoRoot, stageRoot)
         return
     end
 
-    guideDest = fullfile(stageRoot, "toolbox", "GettingStarted.mlx");
+    docDir = fullfile(stageRoot, "doc");
+    if ~isfolder(docDir)
+        mkdir(docDir);
+    end
+    guideDest = fullfile(docDir, "GettingStarted.mlx");
     try
         matlab.internal.liveeditor.openAndSave(char(guideSrc), char(guideDest));
     catch ME
@@ -205,4 +211,39 @@ function guidePath = stageGettingStartedGuide(repoRoot, stageRoot)
 
     guidePath = guideDest;
     fprintf("Staged Getting Started guide: %s\n", guideDest);
+end
+
+function stageTutorials(repoRoot, stageRoot)
+%STAGETUTORIALS Convert the tutorials in doc/tutorials to .mlx in the stage.
+%
+% Like the Getting Started guide, each tutorial is authored as a live-script .m
+% and converted to a .mlx in doc/tutorials at the root of the stage. Every
+% folder in the stage except data is on the toolbox's MATLAB path, so users can
+% open a tutorial by name. A tutorial that cannot be converted is left out with
+% a warning rather than failing the package.
+
+    tutorialSrcs = dir(fullfile(repoRoot, "doc", "tutorials", "*.m"));
+    if isempty(tutorialSrcs)
+        return
+    end
+
+    tutorialDir = fullfile(stageRoot, "doc", "tutorials");
+    if ~isfolder(tutorialDir)
+        mkdir(tutorialDir);
+    end
+
+    for k = 1:numel(tutorialSrcs)
+        src = fullfile(tutorialSrcs(k).folder, tutorialSrcs(k).name);
+        [~, name] = fileparts(src);
+        dest = fullfile(tutorialDir, name + ".mlx");
+        try
+            matlab.internal.liveeditor.openAndSave(char(src), char(dest));
+        catch ME
+            warning("ctPackageToolbox:TutorialConversionFailed", ...
+                    "Could not convert %s to .mlx (%s); leaving it out.", ...
+                    src, ME.message);
+            continue
+        end
+        fprintf("Staged tutorial: %s\n", dest);
+    end
 end
