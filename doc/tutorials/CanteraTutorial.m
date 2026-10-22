@@ -362,6 +362,9 @@ sum(ropNet(II) .* dH(II))
 % Congratulations! You have finished the Cantera MATLAB tutorial and should be
 % ready to start using Cantera on your own.
 %
+% * The |LithiumIonBattery| tutorial applies Cantera to a lithium-ion battery,
+%   computing its open-circuit voltage and discharge curves. Open it with
+%   |open LithiumIonBattery|.
 % * The example scripts in the |samples| folder of the toolbox show complete
 %   simulations, including reactor networks and flames.
 % * The <https://cantera.org/stable/userguide/index.html Cantera User Guide>
