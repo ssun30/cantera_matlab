@@ -38,7 +38,6 @@ jobs:
 
     env:
       CANTERA_ROOT: ${{ github.workspace }}/cantera
-      TOOLBOX_VERSION: 3.2.0
       BOOST_ROOT: ${{ github.workspace }}/3rdparty/boost
       BOOST_URL: https://github.com/boostorg/boost/releases/download/boost-1.87.0/boost-1.87.0-b2-nodocs.7z
 
@@ -47,6 +46,16 @@ jobs:
         shell: bash
 
     steps:
+      - name: Resolve the toolbox version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            VERSION="$(printf '%s' "$REF_NAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+          fi
+          echo "TOOLBOX_VERSION=${VERSION:-0.0.0}" >> "$GITHUB_ENV"
+
       - name: Check out cantera_matlab
         uses: actions/checkout@v4
         with:
@@ -86,8 +95,6 @@ jobs:
           brew install --display-times boost doxygen
           echo "BOOST_INC_DIR=$(brew --prefix)/include" >> "$GITHUB_ENV"
 
-      # This workflow publishes nothing (release.yml builds the release without
-      # caches), so a poisoned cache cannot reach users.
       - name: Cache Boost headers (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v4 # zizmor: ignore[cache-poisoning]
@@ -147,17 +154,11 @@ jobs:
         with:
           release: ${{ matrix.release }}
 
-      # Split from the full workflow so a library failure is attributable on its own.
-      # "buildInterface" runs this task again as a dependency; the stamp file skips
-      # the rebuild, but it still re-exports CANTERA_INCLUDE_PATH/LIB_PATH, which
-      # buildInterface needs and which do not survive between MATLAB sessions.
       - name: Build the Cantera library
         uses: matlab-actions/run-build@cf54c2229a74d57eb4e6ba1bbebd45793d37797e # v3.4.0
         with:
           tasks: buildCanteraLibrary
 
-      # The build script audits what it builds, but skips on a cache hit, so
-      # audit here too: a restored library must meet the same bar.
       - name: Audit the Cantera library
         run: python TMP/toolbox/buildUtilities/audit_library.py --prefix build/canteraLib
 
@@ -176,8 +177,6 @@ jobs:
         with:
           tasks: buildInterface
 
-      # Skip the tasks that built the interface above: "stage" would delete TMP,
-      # including the interface.
       - name: Run buildtool tests
         uses: matlab-actions/run-build@cf54c2229a74d57eb4e6ba1bbebd45793d37797e # v3.4.0
         with:
