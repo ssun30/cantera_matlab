@@ -51,6 +51,16 @@ fprintf("Adiabatic flame temperature: %.1f K\n", gas.T);
 
 ct.unload
 
+%% Next Steps
+% The toolbox includes a tutorial that goes further: setting the thermodynamic
+% state, working with mechanism files, chemical equilibrium, and reaction
+% rates. Open it with:
+%
+%   open CanteraTutorial
+%
+% The example scripts in the |samples| folder of the toolbox show complete
+% simulations, including reactor networks and flames.
+
 %% Uninstalling
 % Run |ct.uninstall| *before* removing the toolbox in the Add-On Manager. It
 % clears the settings saved by |ct.install|, and it is part of the toolbox, so

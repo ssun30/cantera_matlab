@@ -69,6 +69,18 @@ ct.load
 gas = ct.Solution("gri30.yaml");
 ```
 
+### Tutorials
+
+The toolbox includes tutorial live scripts that go beyond the Getting Started
+guide. Open one by name, for example:
+
+```matlab
+open CanteraTutorial
+```
+
+`CanteraTutorial` covers setting the thermodynamic state, working with
+mechanism files, chemical equilibrium, and reaction rates.
+
 ### Uninstalling
 
 Run `ct.uninstall` **first**, then remove the toolbox in the Add-On Manager.
@@ -157,19 +169,35 @@ repository root:
 | `buildtool package`             | Build the `.mltbx`, binaries included, into `release/` (depends on `buildInterface`). |
 | `buildtool`                     | Run `test` and `package`, the default tasks.                       |
 
-`buildCanteraLibrary` builds from `CANTERA_ROOT` rather than the staged tree,
-so it is a second root task joining the chain at `buildInterface`:
+`buildCanteraLibrary` builds from `CANTERA_ROOT`, but runs the build scripts
+from the staged copy of Cantera's `interfaces/matlab/buildUtilities`, so it
+depends on `stage`:
 
 ```
-stage ───────────────┐
-                     ├─→ buildInterface ─┬─→ test
-buildCanteraLibrary ─┘                   └─→ package
+stage ─→ buildCanteraLibrary ─→ buildInterface ─┬─→ test
+                                                └─→ package
 ```
 
 A local `buildtool package` includes only the current platform's binaries, and
 installs directly for testing. The release workflow builds the interface on
 all three platforms, merges them into one stage, and packages once, so the
 published `.mltbx` serves every platform.
+
+### Live scripts
+
+The Getting Started guide (`doc/GettingStarted.m`) and the tutorials
+(`doc/tutorials/*.m`) are kept as plain `.m` files, so that changes are easy
+to review. `buildtool package` converts each of them to a `.mlx` live script in
+the same place in the package, in a `doc` folder next to `toolbox`, `samples`,
+and `data`:
+
+```
+doc/GettingStarted.mlx        registered as the toolbox's Getting Started guide
+doc/tutorials/*.mlx           on the toolbox's MATLAB path, so users can open them by name
+```
+
+To add a tutorial, add a `.m` file to `doc/tutorials`, using `%%` section
+headers and `%` comment lines for the text, like the existing ones.
 
 ### Outputs
 
