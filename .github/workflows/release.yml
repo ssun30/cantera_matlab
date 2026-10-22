@@ -11,9 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       incoming_ref:
-        description: 'Ref in Cantera/cantera to package; leave blank for the default'
+        description: 'Ref in CANTERA_REPO to package; leave blank for CANTERA_DEFAULT_REF'
         required: false
         default: ''
+      test_release:
+        description: 'Test the release job with a draft release (nothing is published)'
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -271,7 +275,7 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: package
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.test_release
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -283,9 +287,21 @@ jobs:
           path: dist
 
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" dist/*.mltbx --repo "$GITHUB_REPOSITORY" \
             --verify-tag --generate-notes
+
+      - name: Create a draft release (test run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: test-${{ github.run_number }}
+          TARGET: ${{ github.sha }}
+        run: |
+          gh release create "$TAG" dist/*.mltbx --repo "$GITHUB_REPOSITORY" \
+            --draft --target "$TARGET" --generate-notes \
+            --title "$TAG (test draft, do not publish)"

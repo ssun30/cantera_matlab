@@ -204,3 +204,18 @@ headers and `%` comment lines for the text, like the existing ones.
 * `TMP/` — staging area (intermediate; safe to delete).
 * `build/canteraLib/` — the self-contained Cantera library (`include/`, `lib/`).
 * `release/` — the built `.mltbx`.
+
+### Releasing
+
+Push a tag `vX.Y.Z` to `main`; do not create the release on GitHub by hand.
+The release workflow builds the toolbox on all three platforms, packages it as
+version `X.Y.Z`, and publishes the GitHub release with the `.mltbx` attached,
+which File Exchange then picks up. File Exchange only uses a `.mltbx` that is
+attached when the release is published, so a release created by hand, with the
+toolbox attached later, ships without it.
+
+To rehearse, run the release workflow manually from the Actions tab. It builds
+and packages the toolbox (as version `0.0.0`) without publishing anything.
+With *Test the release job* ticked, it also creates a draft release named
+`test-<run number>` with the toolbox attached; inspect it on the Releases page,
+then delete it. Do not push test tags: any `v*` tag publishes a release.
