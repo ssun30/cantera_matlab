@@ -112,7 +112,7 @@ function ctPackageToolbox(options)
     else
         opts.SupportedPlatforms.Maci64   = platforms.Mac;
     end
-    opts.SupportedPlatforms.MatlabOnline = false;
+    opts.SupportedPlatforms.MatlabOnline = true;
 
     matlab.addons.toolbox.packageToolbox(opts);
     fprintf('Toolbox built: %s\n', outputFile);
