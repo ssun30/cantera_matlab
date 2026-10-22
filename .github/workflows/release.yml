@@ -26,7 +26,8 @@ env:
   # After merging into Cantera/cantera, set CANTERA_REPO back and restore
   # release-tag / latest-release ref resolution in the "resolve" job.
   CANTERA_REPO: ssun30/cantera
-  CANTERA_DEFAULT_REF: matlab_autoConfigure
+  # cantera_matlab_demo_branch combines the pending Cantera PRs (#2187 and #2177).
+  CANTERA_DEFAULT_REF: cantera_matlab_demo_branch
   # Build artifacts with the minimum supported release so the generated
   # interface loads on that release and later.
   MATLAB_RELEASE: R2024b
@@ -98,6 +99,8 @@ jobs:
     steps:
       - name: Check out cantera_matlab
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Check out Cantera
         uses: actions/checkout@v4
@@ -130,24 +133,17 @@ jobs:
           brew install --display-times boost doxygen
           echo "BOOST_INC_DIR=$(brew --prefix)/include" >> "$GITHUB_ENV"
 
-      - name: Cache Boost headers (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.BOOST_ROOT }}
-          key: boost-1.87.0-${{ runner.os }}
-
+      # Downloaded fresh for every release build rather than cached: the release is
+      # published, so it must not depend on a cache that could have been poisoned.
       - name: Install Boost headers (Windows)
         if: runner.os == 'Windows'
         run: |
           BOOST_ROOT=$(echo "$BOOST_ROOT" | sed 's/\\/\//g')
-          if [ ! -d "$BOOST_ROOT/boost" ]; then
-            mkdir -p "$BOOST_ROOT"
-            curl --progress-bar --location --output "$BOOST_ROOT/download.7z" -L "$BOOST_URL"
-            7z -o"$BOOST_ROOT" x "$BOOST_ROOT/download.7z" -y -bd boost-1.87.0/boost
-            mv "$BOOST_ROOT/boost-1.87.0/boost" "$BOOST_ROOT/boost"
-            rm "$BOOST_ROOT/download.7z"
-          fi
+          mkdir -p "$BOOST_ROOT"
+          curl --progress-bar --location --output "$BOOST_ROOT/download.7z" -L "$BOOST_URL"
+          7z -o"$BOOST_ROOT" x "$BOOST_ROOT/download.7z" -y -bd boost-1.87.0/boost
+          mv "$BOOST_ROOT/boost-1.87.0/boost" "$BOOST_ROOT/boost"
+          rm "$BOOST_ROOT/download.7z"
           echo "BOOST_INC_DIR=$BOOST_ROOT" >> "$GITHUB_ENV"
 
       - name: Install doxygen (Windows)
@@ -173,23 +169,18 @@ jobs:
         if: runner.os != 'Windows'
         run: echo "LD_LIBRARY_PATH=" >> "$GITHUB_ENV"
 
-      # MATLAB bundles an older libstdc++ than the toolchain clibgen
-      # compiles the interface with, and dies without
-      # the system one preloaded. cantera_shared links it statically
-      # and needs nothing. Do not remove with the conda dependencies.
-      - name: Set LD_PRELOAD for MATLAB (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          LIB_STDCXX=$(ldconfig -p | grep libstdc++.so.6 | awk '{print $4}' | head -n 1)
-          echo "LD_PRELOAD=$LIB_STDCXX" >> "$GITHUB_ENV"
-
       - name: Set up MATLAB
-        uses: matlab-actions/setup-matlab@v3
+        uses: matlab-actions/setup-matlab@f9e43010f1ae678f7cfa0542fe2a4f60f7d1ad8d # v3.1.0
         with:
           release: ${{ env.MATLAB_RELEASE }}
 
+      # On Linux, R2024b crashes while generating the interface unless the system
+      # libstdc++ is preloaded. The interface and the Cantera library link
+      # libstdc++ statically, so users do not need LD_PRELOAD to load them.
       - name: Build the interface
-        uses: matlab-actions/run-build@v3
+        uses: matlab-actions/run-build@cf54c2229a74d57eb4e6ba1bbebd45793d37797e # v3.4.0
+        env:
+          LD_PRELOAD: ${{ runner.os == 'Linux' && '/lib/x86_64-linux-gnu/libstdc++.so.6' || '' }}
         with:
           tasks: buildInterface
 
@@ -224,6 +215,8 @@ jobs:
     steps:
       - name: Check out cantera_matlab
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Check out Cantera
         uses: actions/checkout@v4
@@ -234,12 +227,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up MATLAB
-        uses: matlab-actions/setup-matlab@v3
+        uses: matlab-actions/setup-matlab@f9e43010f1ae678f7cfa0542fe2a4f60f7d1ad8d # v3.1.0
         with:
           release: ${{ env.MATLAB_RELEASE }}
 
       - name: Stage the toolbox
-        uses: matlab-actions/run-command@v3
+        uses: matlab-actions/run-command@bfa857648f4895aa98a446fe41c85e0788421ed5 # v3.3.0
         with:
           command: addpath("buildUtilities"); ctStageToolbox();
 
@@ -269,7 +262,7 @@ jobs:
           ls -l "$dest"
 
       - name: Package the toolbox
-        uses: matlab-actions/run-command@v3
+        uses: matlab-actions/run-command@bfa857648f4895aa98a446fe41c85e0788421ed5 # v3.3.0
         with:
           command: addpath("buildUtilities"); ctPackageToolbox();
 
@@ -295,7 +288,9 @@ jobs:
           path: dist
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.mltbx
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/*.mltbx --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --generate-notes

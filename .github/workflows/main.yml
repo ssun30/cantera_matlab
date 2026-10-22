@@ -16,6 +16,9 @@ on:
 
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: ${{ matrix.os }} / MATLAB ${{ matrix.release }}
@@ -25,22 +28,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Each OS is covered on the minimum supported MATLAB and on the
-        # newest image with the newest MATLAB. Windows has no R2024b row:
-        # that release supports Visual C++ 2022 at newest, and windows-2025
-        # ships a newer Visual Studio, so MATLAB finds no usable compiler.
+        # The same OS images and MATLAB releases as the MATLAB CI in Cantera: each
+        # image runs the oldest supported release (R2024b) and the newest one.
+        os: [ubuntu-24.04, windows-2025, macos-14]
+        release: [R2024b, latest]
         include:
-          - os: ubuntu-24.04
-            release: R2024b
-          - os: ubuntu-latest
-            release: latest
-          - os: macos-14
-            release: R2024b
-          - os: macos-latest
-            release: latest
-          - os: windows-2025
-            release: R2024b
-          - os: windows-latest
+          - os: macos-15
             release: latest
 
     env:
@@ -56,15 +49,19 @@ jobs:
     steps:
       - name: Check out cantera_matlab
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Check out Cantera
         uses: actions/checkout@v4
         with:
-          # TEMP (pre-alpha): build against the fork feature branch.
-          # Revert to "Cantera/cantera" (default branch) after merge.
+          # TEMP (pre-alpha): build against the fork branch that combines the
+          # pending Cantera PRs (#2187 and #2177). Revert to "Cantera/cantera"
+          # (default branch) after they are merged.
           repository: ssun30/cantera
-          ref: matlab_autoConfigure
+          ref: cantera_matlab_demo_branch
           path: cantera
+          persist-credentials: false
           submodules: recursive
 
       - name: Set up Python
@@ -89,9 +86,11 @@ jobs:
           brew install --display-times boost doxygen
           echo "BOOST_INC_DIR=$(brew --prefix)/include" >> "$GITHUB_ENV"
 
+      # This workflow publishes nothing (release.yml builds the release without
+      # caches), so a poisoned cache cannot reach users.
       - name: Cache Boost headers (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v4 # zizmor: ignore[cache-poisoning]
         with:
           path: ${{ env.BOOST_ROOT }}
           key: boost-1.87.0-${{ runner.os }}
@@ -132,38 +131,28 @@ jobs:
         if: runner.os != 'Windows'
         run: echo "LD_LIBRARY_PATH=" >> "$GITHUB_ENV"
 
-      # MATLAB bundles an older libstdc++ than the toolchain clibgen
-      # compiles the interface with, and dies without
-      # the system one preloaded. cantera_shared links it statically
-      # and needs nothing. Do not remove with the conda dependencies.
-      - name: Set LD_PRELOAD for MATLAB (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          LIB_STDCXX=$(ldconfig -p | grep libstdc++.so.6 | awk '{print $4}' | head -n 1)
-          echo "LD_PRELOAD=$LIB_STDCXX" >> "$GITHUB_ENV"
-
       # Keyed on the Cantera commit: the pinned ref is a moving branch.
       - name: Resolve Cantera commit
         id: cantera
         run: echo "sha=$(git -C cantera rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Cache the built Cantera library
-        uses: actions/cache@v4
+        uses: actions/cache@v4 # zizmor: ignore[cache-poisoning]
         with:
           path: build/canteraLib
           key: canteraLib-${{ matrix.os }}-${{ hashFiles('cantera/interfaces/matlab/buildUtilities/build_cantera_library.py') }}-${{ steps.cantera.outputs.sha }}
 
       - name: Set up MATLAB
-        uses: matlab-actions/setup-matlab@v3
+        uses: matlab-actions/setup-matlab@f9e43010f1ae678f7cfa0542fe2a4f60f7d1ad8d # v3.1.0
         with:
           release: ${{ matrix.release }}
 
       # Split from the full workflow so a library failure is attributable on its own.
-      # "test" runs this task again as a dependency; the stamp file skips the
-      # rebuild, but it still re-exports CANTERA_INCLUDE_PATH/LIB_PATH, which
+      # "buildInterface" runs this task again as a dependency; the stamp file skips
+      # the rebuild, but it still re-exports CANTERA_INCLUDE_PATH/LIB_PATH, which
       # buildInterface needs and which do not survive between MATLAB sessions.
       - name: Build the Cantera library
-        uses: matlab-actions/run-build@v3
+        uses: matlab-actions/run-build@cf54c2229a74d57eb4e6ba1bbebd45793d37797e # v3.4.0
         with:
           tasks: buildCanteraLibrary
 
@@ -176,7 +165,21 @@ jobs:
         if: runner.os == 'Windows'
         run: echo "${{ github.workspace }}/build/canteraLib/lib" >> "$GITHUB_PATH"
 
+      # On Linux, R2024b crashes while generating the interface unless the system
+      # libstdc++ is preloaded. Only building the interface needs it: the interface
+      # and the Cantera library link libstdc++ statically, so the tests below load
+      # the toolbox as users do, without LD_PRELOAD.
+      - name: Build the interface
+        uses: matlab-actions/run-build@cf54c2229a74d57eb4e6ba1bbebd45793d37797e # v3.4.0
+        env:
+          LD_PRELOAD: ${{ runner.os == 'Linux' && '/lib/x86_64-linux-gnu/libstdc++.so.6' || '' }}
+        with:
+          tasks: buildInterface
+
+      # Skip the tasks that built the interface above: "stage" would delete TMP,
+      # including the interface.
       - name: Run buildtool tests
-        uses: matlab-actions/run-build@v3
+        uses: matlab-actions/run-build@cf54c2229a74d57eb4e6ba1bbebd45793d37797e # v3.4.0
         with:
           tasks: test package
+          build-options: -skip stage -skip buildCanteraLibrary -skip buildInterface
