@@ -30,10 +30,10 @@ jobs:
       matrix:
         # The same OS images and MATLAB releases as the MATLAB CI in Cantera: each
         # image runs the oldest supported release (R2024b) and the newest one.
-        os: [ubuntu-24.04, windows-2025, macos-14]
+        os: [ubuntu-24.04, windows-2025, macos-15]
         release: [R2024b, latest]
         include:
-          - os: macos-15
+          - os: macos-26
             release: latest
 
     env:
@@ -147,7 +147,7 @@ jobs:
         uses: actions/cache@v4 # zizmor: ignore[cache-poisoning]
         with:
           path: build/canteraLib
-          key: canteraLib-${{ matrix.os }}-${{ hashFiles('cantera/interfaces/matlab/buildUtilities/build_cantera_library.py') }}-${{ steps.cantera.outputs.sha }}
+          key: canteraLib-${{ matrix.os }}-${{ hashFiles('buildUtilities/build_cantera_library.py') }}-${{ steps.cantera.outputs.sha }}
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@f9e43010f1ae678f7cfa0542fe2a4f60f7d1ad8d # v3.1.0
@@ -160,7 +160,7 @@ jobs:
           tasks: buildCanteraLibrary
 
       - name: Audit the Cantera library
-        run: python TMP/toolbox/buildUtilities/audit_library.py --prefix build/canteraLib
+        run: python buildUtilities/audit_library.py --prefix build/canteraLib
 
       - name: Add the Cantera library to PATH (Windows)
         if: runner.os == 'Windows'

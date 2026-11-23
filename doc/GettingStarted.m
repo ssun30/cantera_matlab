@@ -11,30 +11,22 @@
 % (reaction mechanisms such as |gri30.yaml|). You do *not* need to install
 % Cantera, conda, or a compiler.
 %
-% Work through the steps in order. You only need to do Step 1 once.
+% Work through the steps in order.
 
-%% Step 1 - Finish the installation (once)
-% Run the line below (place your cursor on it and press Ctrl+Enter, or
-% Cmd+Enter on macOS):
-
-ct.install
-
-%%
-% This registers the bundled data files and checks that Cantera loads. MATLAB
-% remembers the result, so you never need to run it again; running it again
-% does nothing.
-
-%% Step 2 - Load Cantera
-% Load the interface at the start of each MATLAB session:
+%% Step 1 - Load Cantera
+% Load the interface at the start of each MATLAB session. Run the line below
+% (place your cursor on it and press Ctrl+Enter, or Cmd+Enter on macOS):
 
 ct.load
 
 %%
-% The data folders Cantera searches for mechanism files are listed by:
+% The data files shipped with the toolbox, such as |gri30.yaml|, are found
+% automatically. The data folders Cantera searches for mechanism files are
+% listed by:
 
 ct.dataDirectories
 
-%% Step 3 - Run a minimal example
+%% Step 2 - Run a minimal example
 % Compute the adiabatic flame temperature of a stoichiometric methane/air
 % mixture. This creates a gas mixture from the GRI-Mech 3.0 mechanism, sets its
 % initial state, and finds chemical equilibrium at constant enthalpy and
@@ -46,7 +38,7 @@ gas.equilibrate("HP");
 
 fprintf("Adiabatic flame temperature: %.1f K\n", gas.T);
 
-%% Step 4 - When you are finished
+%% Step 3 - When you are finished
 % Unload the interface to free resources (optional):
 
 ct.unload
@@ -67,11 +59,10 @@ ct.unload
 % simulations, including reactor networks and flames.
 
 %% Uninstalling
-% Run |ct.uninstall| *before* removing the toolbox in the Add-On Manager. It
-% clears the settings saved by |ct.install|, and it is part of the toolbox, so
-% it is no longer available once the toolbox is removed:
-%
-%   % ct.uninstall
+% Remove the toolbox in the Add-On Manager (MATLAB Home tab > Add-Ons > Manage
+% Add-Ons). On Windows, Cantera's files cannot be removed while Cantera is
+% loaded: run |ct.unload| first, or restart MATLAB if Cantera was loaded
+% in-process.
 
 %% Troubleshooting
 % *The Cantera MATLAB interface was not found* (from |ct.load|) - the
@@ -79,9 +70,11 @@ ct.unload
 % the toolbox; if the error persists, this release does not support your
 % platform.
 %
-% *Error: could not find input file 'gri30.yaml'* (or similar) - the data
-% folder is not registered. Run |ct.install(Force=true)| to set it up again;
-% |ct.dataDirectories| shows the folders currently searched.
+% *Error: could not find input file 'gri30.yaml'* (or similar) -
+% |ct.dataDirectories| shows the folders currently searched; the data folder
+% shipped with the toolbox should be among them. If it is missing, reinstall
+% the toolbox. To use input files from another folder, add it with
+% |ct.addDataDirectories|.
 %
 % *Nothing happens / functions are not found* - Make sure the toolbox installed
 % correctly (MATLAB Home tab > Add-Ons > Manage Add-Ons).

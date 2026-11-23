@@ -40,7 +40,7 @@ the toolbox ships Cantera's standard data files (`gri30.yaml`, `air.yaml`, and
 the rest). No conda environment, no `LD_LIBRARY_PATH`, no compiler.
 
 > **Prefer a guided walkthrough?** When you install the toolbox, MATLAB opens
-> its **Getting Started** guide — a live script that runs `ct.install` and a
+> its **Getting Started** guide — a live script that loads Cantera and runs a
 > first simulation step by step. You can follow it instead of the steps below.
 > To reopen it later, go to **Home > Add-Ons > Manage Add-Ons**, click the
 > **⋮** menu next to *Cantera MATLAB Toolbox*, and choose **Open Getting
@@ -50,19 +50,10 @@ the rest). No conda environment, no `LD_LIBRARY_PATH`, no compiler.
 
 Download the `.mltbx` and double-click it (or use the MATLAB Add-On Manager).
 
-### 2. Run `ct.install` once
+### 2. Use Cantera
 
-```matlab
-ct.install
-```
-
-This registers the bundled data directory and verifies that Cantera loads. The settings are saved as
-MATLAB preferences, so this is needed only once; running it again does nothing
-unless the installation is incomplete. To redo it, use `ct.install(Force=true)`.
-
-### 3. Use Cantera
-
-Load Cantera at the start of each session:
+Load Cantera at the start of each session. The data files shipped with the
+toolbox are found automatically:
 
 ```matlab
 ct.load
@@ -86,9 +77,9 @@ open CanteraTutorial
 
 ### Uninstalling
 
-Run `ct.uninstall` **first**, then remove the toolbox in the Add-On Manager.
-`ct.uninstall` clears the saved Cantera preferences and unloads Cantera, and it is
-part of the toolbox, so it is no longer available once the toolbox is removed.
+Remove the toolbox in the Add-On Manager. On Windows, Cantera's files cannot be
+removed while Cantera is loaded: run `ct.unload` first, or restart MATLAB if
+Cantera was loaded in-process.
 
 ---
 
@@ -137,11 +128,8 @@ Set these environment variables before building:
 
 `buildtool buildCanteraLibrary` builds Cantera with every third-party
 dependency vendored and statically linked (`system_*=n`, no external
-BLAS/LAPACK, no HDF5), then checks with `audit_library.py` that
+BLAS/LAPACK, no HDF5), then checks with `buildUtilities/audit_library.py` that
 the result depends on nothing outside a per-platform allowlist of OS libraries.
-Both scripts (`build_cantera_library.py` and `audit_library.py`) live in Cantera's
-`interfaces/matlab/buildUtilities`; `buildtool stage` copies them into the staged
-toolbox, and `buildtool package` leaves them out of the MLTBX.
 MATLAB's `clibgen` copies it next to the generated interface, so it ships
 inside the `ctMatlab` bundle automatically.
 
@@ -172,13 +160,13 @@ repository root:
 | `buildtool package`             | Build the `.mltbx`, binaries included, into `release/` (depends on `buildInterface`). |
 | `buildtool`                     | Run `test` and `package`, the default tasks.                       |
 
-`buildCanteraLibrary` builds from `CANTERA_ROOT`, but runs the build scripts
-from the staged copy of Cantera's `interfaces/matlab/buildUtilities`, so it
-depends on `stage`:
+`buildCanteraLibrary` builds from `CANTERA_ROOT` rather than the staged tree,
+so it is a second root task joining the chain at `buildInterface`:
 
 ```
-stage ─→ buildCanteraLibrary ─→ buildInterface ─┬─→ test
-                                                └─→ package
+stage ───────────────┐
+                     ├─→ buildInterface ─┬─→ test
+buildCanteraLibrary ─┘                   └─→ package
 ```
 
 A local `buildtool package` includes only the current platform's binaries, and
