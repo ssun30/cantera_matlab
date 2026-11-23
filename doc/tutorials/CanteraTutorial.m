@@ -6,9 +6,8 @@
 % <https://cantera.org/stable/userguide/python-tutorial.html Cantera Python
 % tutorial>, adapted to MATLAB.
 %
-% It assumes you have completed the *Getting Started* guide, in particular
-% running |ct.install| once after installing the toolbox. Run the sections in
-% order: each one builds on the previous ones.
+% It assumes you have completed the *Getting Started* guide. Run the sections
+% in order: each one builds on the previous ones.
 
 %% Load Cantera
 % Load the Cantera interface at the start of each MATLAB session. Cantera can
