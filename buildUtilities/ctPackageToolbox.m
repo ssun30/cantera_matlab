@@ -50,14 +50,10 @@ function ctPackageToolbox(options)
     guidePath = stageGettingStartedGuide(options.RepoRoot, options.StageRoot);
     stageTutorials(options.RepoRoot, options.StageRoot);
 
-    % Collect packaged files. The library build scripts staged from Cantera's
-    % interfaces/matlab/buildUtilities are only used to build the toolbox, so
-    % they are left out of the package.
+    % Collect packaged files
     files = dir(fullfile(options.StageRoot, '**', '*'));
     files = files(~[files.isdir]);
     allFiles = fullfile({files.folder}, {files.name})';
-    buildScriptsDir = fullfile(options.StageRoot, 'toolbox', 'buildUtilities');
-    allFiles = allFiles(~startsWith(allFiles, buildScriptsDir));
 
     % The compiled interface ships inside the package. The stage holds one
     % platform's build locally; the release workflow merges all three into it.
@@ -75,7 +71,6 @@ function ctPackageToolbox(options)
     matlabPaths = matlabPaths(~cellfun(@isempty, matlabPaths));
     dataRoot = fullfile(options.StageRoot, 'data');
     matlabPaths = matlabPaths(~startsWith(matlabPaths, dataRoot));
-    matlabPaths = matlabPaths(~startsWith(matlabPaths, buildScriptsDir));
     matlabPaths{end+1} = char(interfaceDir);
 
     % Get path to the icon file
