@@ -30,10 +30,10 @@ jobs:
       matrix:
         # The same OS images and MATLAB releases as the MATLAB CI in Cantera: each
         # image runs the oldest supported release (R2024b) and the newest one.
-        os: [ubuntu-24.04, windows-2025, macos-14]
+        os: [ubuntu-24.04, windows-2025, macos-15]
         release: [R2024b, latest]
         include:
-          - os: macos-15
+          - os: macos-26
             release: latest
 
     env:
